@@ -1,0 +1,65 @@
+# ===== Python Virtual Environment (venv di dalam project root) =====
+bin/
+lib/
+lib64/
+include/
+share/
+pyvenv.cfg
+.Python
+*.cfg-backup
+*.egg-info/
+dist/
+build/
+eggs/
+
+# ===== Python Bytecode / Cache =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+*.so
+
+# ===== Pytest Cache =====
+.pytest_cache/
+.pytest_cache/**
+*.egg-info/
+
+# ===== IDE / Editor =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+*.sublime-workspace
+*.sublime-project
+
+# ===== OS Junk =====
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ===== EA MA510 - SPECIFIC IGNORING (KRITIS, JANGAN SAMPAI TER-COMMIT) =====
+
+# File ENV (RAHASIA — bisa berisi MT5_LOGIN / MT5_PASSWORD asli account)
+.env
+# JANGAN masukkan .env.example, itu adalah template YANG WAJIB dishare
+
+# Hasil Output Runtime (dibuat otomatis, tidak perlu masuk repo)
+logs/
+reports/
+
+# Workspace lokal Trae AI (riwayat spec / agent session, tidak perlu dishare)
+.trae/
+
+# Temp / TMP apapun
+tmp/
+temp/
+*.tmp
+*.bak
