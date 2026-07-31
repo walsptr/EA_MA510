@@ -28,6 +28,7 @@ def make_e2e_cfg(tmpdir, **overrides) -> Config:
         backtest_initial_balance=1000.0,
         backtest_spread_points=0,
         backtest_slippage_points=0,
+        backtest_use_mt5=False,
         sizing_mode="FIXED_LOT",
         fixed_lot_size=0.5,
         risk_percent_per_trade=None,
@@ -47,6 +48,8 @@ def make_e2e_cfg(tmpdir, **overrides) -> Config:
         max_concurrent_positions=1,
         max_spread_points=None,
         max_daily_loss_percent=None,
+        trading_window_start=None,
+        trading_window_end=None,
         magic_number=99999,
         live_poll_interval_seconds=5,
         mt5_login=None,
@@ -56,6 +59,7 @@ def make_e2e_cfg(tmpdir, **overrides) -> Config:
         log_level="INFO",
         log_dir=log_dir,
         report_dir=report_dir,
+        display_timezone="UTC",
     )
     base.update(overrides)
     return Config(**base)
@@ -149,20 +153,22 @@ def test_main_backtest_smoke_script_run():
             "LOG_LEVEL": "WARNING",
             "LOG_DIR": os.path.join(tmpdir, "logs"),
             "REPORT_DIR": os.path.join(tmpdir, "reports"),
+            "BACKTEST_USE_MT5": "false",
         }
         old_env = {k: os.environ.get(k) for k in env_overrides}
         for k, v in env_overrides.items():
             os.environ[k] = v
         try:
             import subprocess
-            project_root = "/home/syawal/Project/EA-MA510"
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             env = os.environ.copy()
             env.update(env_overrides)
             env["PYTHONPATH"] = project_root
             result = subprocess.run(
                 [sys.executable, "-c", """
 import sys
-sys.path.insert(0, '/home/syawal/Project/EA-MA510')
+import os
+sys.path.insert(0, os.environ.get('PYTHONPATH', ''))
 from main import main
 sys.exit(main())
 """],

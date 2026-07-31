@@ -10,6 +10,22 @@ from typing import Tuple, List, Optional, Any
 import time
 
 
+def _is_within_trading_window(cfg: Config, ts: Any) -> bool:
+    start = getattr(cfg, "trading_window_start", None)
+    end = getattr(cfg, "trading_window_end", None)
+    if start is None or end is None:
+        return True
+    tz = getattr(cfg, "display_timezone", "UTC") or "UTC"
+    t = pd.Timestamp(ts)
+    if t.tzinfo is None:
+        t = t.tz_localize("UTC")
+    t = t.tz_convert(tz)
+    tod = t.time()
+    if start < end:
+        return start <= tod < end
+    return tod >= start or tod < end
+
+
 def slice_up_to_time(df: pd.DataFrame, t: Any) -> pd.DataFrame:
     """
     RULES.md §7: Hanya return candle dengan close_time <= t.
@@ -76,19 +92,32 @@ def run_backtest(cfg: Config, use_mt5: bool = False) -> Tuple[List[TradeLogEntry
     start_date = cfg.backtest_start_date or date(2025, 1, 1)
     end_date = cfg.backtest_end_date or date(2025, 1, 31)
 
+    symbol_info: Optional[SymbolInfo] = None
+
     if use_mt5:
         try:
             import MetaTrader5 as _mt5_probe  # noqa: F401
-        except ImportError:
-            use_mt5 = False
+        except ImportError as e:
+            raise RuntimeError(
+                "use_mt5=True tapi package MetaTrader5 tidak tersedia. "
+                "Install MetaTrader5 (Windows-only) atau jalankan dengan use_mt5=False."
+            ) from e
 
-    if use_mt5:
-        entry_history = get_history(cfg.symbol, entry_tf, start_date, end_date)
-        tf1_history = get_history(cfg.symbol, tf1, start_date, end_date)
-        tf2_history = get_history(cfg.symbol, tf2, start_date, end_date)
-        if len(entry_history) == 0 or len(tf1_history) == 0 or len(tf2_history) == 0:
-            use_mt5 = False
-    if not use_mt5:
+        from src.mt5_client import MT5Client
+
+        client = MT5Client(cfg)
+        client.initialize()
+        client.login()
+        try:
+            entry_history = get_history(cfg.symbol, entry_tf, start_date, end_date, raise_on_error=True)
+            tf1_history = get_history(cfg.symbol, tf1, start_date, end_date, raise_on_error=True)
+            tf2_history = get_history(cfg.symbol, tf2, start_date, end_date, raise_on_error=True)
+            info = client.symbol_info(cfg.symbol)
+            if info:
+                symbol_info = SymbolInfo(**info)
+        finally:
+            client.shutdown()
+    else:
         try:
             dfs = get_synthetic_for_all_timeframes(cfg)
             entry_history = dfs[entry_tf].copy()
@@ -100,7 +129,7 @@ def run_backtest(cfg: Config, use_mt5: bool = False) -> Tuple[List[TradeLogEntry
             tf2_history = generate_synthetic_candles(tf2, start_date, end_date, pattern="bull_cross_then_bear")
 
     print(
-        f"[BACKTEST] Data siap → {entry_tf}:{len(entry_history)} bars, "
+        f"[BACKTEST] Data siap -> {entry_tf}:{len(entry_history)} bars, "
         f"{tf1}:{len(tf1_history)} bars, {tf2}:{len(tf2_history)} bars "
         f"(sumber={'MT5 riil' if use_mt5 else 'SYNTHETIC'}). Loop dimulai..."
     )
@@ -109,7 +138,6 @@ def run_backtest(cfg: Config, use_mt5: bool = False) -> Tuple[List[TradeLogEntry
         if df is not None and len(df) > 0:
             df.index = pd.RangeIndex(len(df))
 
-    symbol_info = _try_get_mt5_symbol_info(cfg) if use_mt5 else None
     if symbol_info is None:
         symbol_info = _default_symbol_info(cfg.symbol)
 
@@ -176,10 +204,13 @@ def run_backtest(cfg: Config, use_mt5: bool = False) -> Tuple[List[TradeLogEntry
             if cfg.exit_on_opposite_signal:
                 executor.close_opposite_positions(signal.direction, at_time=bar.time, close_price=bar_close_price)
 
+            if not _is_within_trading_window(cfg, bar.time):
+                continue
+
             if not executor.can_open_new_position(signal.direction, cfg.max_concurrent_positions):
                 continue
 
-            if cfg.max_spread_points is not None and "spread" in bar.index:
+            if cfg.mode == "LIVE" and cfg.max_spread_points is not None and "spread" in bar.index:
                 if bar.spread > cfg.max_spread_points:
                     continue
 

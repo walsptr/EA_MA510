@@ -34,6 +34,7 @@ def make_buy_cfg():
         backtest_initial_balance=1000,
         backtest_spread_points=0,
         backtest_slippage_points=0,
+        backtest_use_mt5=False,
         sizing_mode="FIXED_LOT",
         fixed_lot_size=0.1,
         risk_percent_per_trade=None,
@@ -53,6 +54,8 @@ def make_buy_cfg():
         max_concurrent_positions=1,
         max_spread_points=None,
         max_daily_loss_percent=None,
+        trading_window_start=None,
+        trading_window_end=None,
         magic_number=1,
         live_poll_interval_seconds=5,
         mt5_login=None,
@@ -62,6 +65,7 @@ def make_buy_cfg():
         log_level="INFO",
         log_dir="./logs",
         report_dir="./reports",
+        display_timezone="UTC",
     )
 
 

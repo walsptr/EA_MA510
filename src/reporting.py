@@ -28,16 +28,38 @@ def _to_serializable(value: Any) -> Any:
     return str(value)
 
 
-def _trade_log_to_df(trade_log: List[TradeLogEntry]) -> pd.DataFrame:
+def _trade_log_to_df(trade_log: List[TradeLogEntry], cfg: Config) -> pd.DataFrame:
+    tz = getattr(cfg, "display_timezone", "UTC") or "UTC"
+
+    def _to_display_ts(v: Any) -> Optional[pd.Timestamp]:
+        if v is None:
+            return None
+        if isinstance(v, date) and not isinstance(v, (datetime, pd.Timestamp)):
+            return None
+        ts = pd.Timestamp(v)
+        if ts.tzinfo is None:
+            ts = ts.tz_localize("UTC")
+        return ts.tz_convert(tz)
+
+    def _hm(v: Any) -> str:
+        ts = _to_display_ts(v)
+        if ts is None:
+            return ""
+        return ts.strftime("%H:%M")
+
     rows = []
     for t in trade_log:
+        open_time = _to_display_ts(getattr(t, "open_time", None))
+        close_time = _to_display_ts(getattr(t, "close_time", None))
         row = {
             "trade_id": getattr(t, "trade_id", None),
             "symbol": getattr(t, "symbol", None),
             "direction": getattr(t, "direction", None),
-            "open_time": getattr(t, "open_time", None),
+            "open_time": open_time,
+            "open_time_hm": _hm(open_time),
             "open_price": getattr(t, "open_price", None),
-            "close_time": getattr(t, "close_time", None),
+            "close_time": close_time,
+            "close_time_hm": _hm(close_time),
             "close_price": getattr(t, "close_price", None),
             "lot_size": getattr(t, "lot_size", None),
             "sl_price": getattr(t, "sl_price", None),
@@ -164,13 +186,13 @@ def generate_report(
 ) -> Dict[str, Any]:
     _ensure_dir(output_dir)
 
-    trades_df = _trade_log_to_df(trade_log)
+    trades_df = _trade_log_to_df(trade_log, cfg)
     trades_csv_path = os.path.join(output_dir, "trades.csv")
-    trades_df.to_csv(trades_csv_path, index=False)
+    trades_df.to_csv(trades_csv_path, index=False, float_format="%.2f")
 
     eq_df = _equity_curve_to_df(equity_curve)
     eq_csv_path = os.path.join(output_dir, "equity_curve.csv")
-    eq_df.to_csv(eq_csv_path, index=False)
+    eq_df.to_csv(eq_csv_path, index=False, float_format="%.2f")
 
     summary = _compute_summary_metrics(trade_log, equity_curve, cfg)
     summary_json_path = os.path.join(output_dir, "summary.json")

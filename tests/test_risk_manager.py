@@ -44,6 +44,7 @@ def _make_config_dollar_xauusd_fixed_lot(monkeypatch, sl_dollar, tp_dollar, lot=
         "MA_HIGH": "10",
         "BACKTEST_START_DATE": "2025-01-01",
         "BACKTEST_END_DATE": "2025-12-31",
+        "BACKTEST_SPREAD_POINTS": "0",
         "SIZING_MODE": "FIXED_LOT",
         "FIXED_LOT_SIZE": str(lot),
         "SL_MODE": "DOLLAR",
@@ -76,6 +77,25 @@ def test_risk_buy_xauusd_dollar_5sl(monkeypatch, xauusd_symbol_info):
     # Expected TP: $15 / 0.5 = 30 points = 0.3
     expected_tp_distance = 15.0 / (0.5 * 1.0) * 0.01
     assert abs(plan.tp_price - (entry_price + expected_tp_distance)) < 0.01
+
+
+def test_risk_dollar_mode_respects_spread_in_backtest(monkeypatch, xauusd_symbol_info):
+    cfg = _make_config_dollar_xauusd_fixed_lot(monkeypatch, sl_dollar=5.0, tp_dollar=15.0, lot=0.5)
+    monkeypatch.setenv("BACKTEST_SPREAD_POINTS", "20")
+    cfg = load_config(use_dotenv=False)
+
+    entry_price = 2000.00
+    signal = Signal(direction="BUY", entry_timeframe_close_price=entry_price)
+    plan = compute_trade_plan(signal, cfg, xauusd_symbol_info, account_equity=1000.0, atr_value=None)
+    assert plan is not None
+
+    point = xauusd_symbol_info.point
+    open_price = entry_price + (cfg.backtest_spread_points * point) / 2
+    expected_sl_distance = 5.0 / (0.5 * 1.0) * point
+    expected_tp_distance = 15.0 / (0.5 * 1.0) * point
+
+    assert abs(plan.sl_price - (open_price - expected_sl_distance)) < point
+    assert abs(plan.tp_price - (open_price + expected_tp_distance)) < point
 
 # ===== TR-5.2: SELL EURUSD DOLLAR, lot=1.0, TP=$10 → tp_price di bawah entry =====
 def test_risk_sell_eurusd_dollar_tp_10(monkeypatch):

@@ -65,7 +65,13 @@ def _mt5_timeframe(tf_str: str):
 def _rates_to_df(rates, timeframe: str) -> pd.DataFrame:
     if rates is None or len(rates) == 0:
         return _empty_schema_df()
-    df = pd.DataFrame(list(rates))
+    df = pd.DataFrame(rates)
+    if "time" not in df.columns:
+        df = pd.DataFrame(list(rates))
+    if "time" not in df.columns:
+        raise RuntimeError(
+            f"MT5 rates schema tidak punya kolom 'time'. columns={list(df.columns)}"
+        )
     df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
     duration = TIMEFRAME_DURATION_MAP[timeframe]
     df["close_time"] = df["time"] + duration
@@ -86,6 +92,7 @@ def get_history(
     timeframe: str,
     start_date: date,
     end_date: date,
+    raise_on_error: bool = False,
 ) -> pd.DataFrame:
     try:
         import MetaTrader5 as mt5
@@ -95,8 +102,16 @@ def get_history(
             end_date.year, end_date.month, end_date.day
         ) + timedelta(days=1)
         rates = mt5.copy_rates_range(symbol, tf_const, start_dt, end_dt)
-        return _rates_to_df(rates, timeframe)
+        df = _rates_to_df(rates, timeframe)
+        if raise_on_error and len(df) == 0:
+            raise RuntimeError(
+                f"MT5 history kosong untuk {symbol} TF={timeframe} ({start_date} -> {end_date}). "
+                f"Last error: {mt5.last_error()}"
+            )
+        return df
     except Exception as e:
+        if raise_on_error:
+            raise
         print(
             f"[WARNING] get_history({symbol!r}, {timeframe!r}, "
             f"{start_date}, {end_date}) error: {e}. Returning empty DataFrame."

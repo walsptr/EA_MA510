@@ -4,6 +4,25 @@ from logging.handlers import RotatingFileHandler
 from typing import Optional
 
 
+class _AutoCloseRotatingFileHandler(RotatingFileHandler):
+    def emit(self, record):
+        if self.stream is None:
+            self.stream = self._open()
+        try:
+            super().emit(record)
+        finally:
+            if self.stream is not None:
+                try:
+                    self.stream.flush()
+                except Exception:
+                    pass
+                try:
+                    self.stream.close()
+                except Exception:
+                    pass
+                self.stream = None
+
+
 def setup_logger(log_dir: str, log_level: str = "INFO") -> logging.Logger:
     """
     Setup logger "ea_ma510" dengan console + file handler.
@@ -47,11 +66,12 @@ def setup_logger(log_dir: str, log_level: str = "INFO") -> logging.Logger:
 
     # 7. File Rotating Handler
     log_file = os.path.join(log_dir, "ea_ma510.log")
-    file_handler = RotatingFileHandler(
+    file_handler = _AutoCloseRotatingFileHandler(
         log_file,
         maxBytes=10 * 1024 * 1024,  # 10 MB
         backupCount=5,
         encoding="utf-8",
+        delay=True,
     )
     file_handler.setLevel(level)
     file_handler.setFormatter(formatter)

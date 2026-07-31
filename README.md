@@ -32,7 +32,7 @@ Contoh default (XAUUSD, EMA 5/10):
 |---|---|
 | **⚙️ 100% Config via ENV** | Semua parameter (MA periods, TF, sizing, SL/TP, range backtest) di-file `.env` — **TIDAK ada magic number di code**. Lihat [SCHEMA.md](file:///home/syawal/Project/EA-MA510/contexts/SCHEMA.md). |
 | **💰 3 SL/TP Mode: FIXED / ATR / **DOLLAR** | — `DOLLAR` mode unggulan: set `SL_DOLLAR=5.0` → **risiko MAKSIMAL $5 per posisi** (terlepas dari lot size / pair apa). Bot otomatis hitung price distance-nya. |
-| **🧪 Synthetic Fallback + Progress Log** | Tidak perlu install MT5 Terminal untuk backtest! Jika package `MetaTrader5` tidak tersedia → otomatis pakai OHLC synthetic (pattern bull_cross_then_bear yang PASTI menghasilkan MA cross). Progress logging **setiap 5% bar** dengan ETA hitung mundur → TIDAK ada "program terasa hang". |
+| **🧪 Synthetic Mode + Progress Log** | Backtest bisa pakai data **synthetic** (set `BACKTEST_USE_MT5=false`) tanpa perlu MT5 Terminal. Progress logging **setiap 5% bar** dengan ETA hitung mundur → TIDAK ada "program terasa hang". |
 | **🔀 Identical Signal: Backtest ↔ Live** | Backtest dan Live memanggil **fungsi `evaluate_signal()` YANG SAMA** di `src/strategy.py` — tidak ada logic fork (menghilangkan bug "backtest bagus, live jelek karena logic beda"). |
 | **🛡️ No Look-Ahead (Backtest Correctness)** | Setiap candle trend-TF yang dipakai saat eval signal di bar `t` **WAJIB punya `close_time <= t`** (dijaga oleh `slice_up_to_time`). Hasil backtest tidak overfit / tidak merefleksikan data masa depan. |
 | **🔑 Setiap Position Punya SL** | Tidak ada code path yang open position tanpa SL valid (jika SL calc gagal → trade di-skip, log error, **lanjut**, tidak open unprotected). |
@@ -262,7 +262,7 @@ Semua file ada di folder `contexts/` → **jika ada pertentangan antara code × 
 
 | Gejala | Penyebab + Solusi |
 |---|---|
-| **`[WARNING] get_history error: No module named 'MetaTrader5'`** + lalu program progress lambat | Normal! Package MT5 = **Windows-only**. Jika `BACKTEST_USE_MT5=true` di non-Windows → pesan WARNING akan muncul, lalu bot **auto fallback ke synthetic**. Jangan Ctrl+C — lihat progress logging `[BACKTEST] XX% ... ETA Xs` — bot sedang bekerja! Atau set `BACKTEST_USE_MT5=false` di `.env` untuk menghilangkan WARNING. |
+| **Config error: `BACKTEST_USE_MT5=true` di non-Windows / MetaTrader5 tidak terinstall** | `MetaTrader5` package itu **Windows-only**. Solusi: jalankan di Windows + install `MetaTrader5`, atau set `BACKTEST_USE_MT5=false` untuk mode synthetic. |
 | `pip install MetaTrader5` FAIL di Linux / Mac | **Sudah diantisipasi**. PyPI package MetaTrader5 **hanya support Windows (butuh MT5 Terminal.exe)**. Backtest synthetic mode berjalan TANPA package ini (skip install). Data historis riil → gunakan Windows / VPS Windows. |
 | **ConfigError: XX wajib diisi** | Cek ENV Anda sesuai SCHEMA.md. Jika SL_MODE=DOLLAR → `SL_DOLLAR` harus diisi dan >0. Jika RISK_PERCENT → `RISK_PERCENT_PER_TRADE` (0-100). |
 | Backtest tidak menghasilkan trade sama sekali (0 trade) | 1) Trend filter ketat: kedua trend TF TIDAK PERNAH searah MA cross. Coba ganti parameter MA atau gunakan synthetic (pasti menghasilkan cross). 2) Spread terlalu tinggi (MAX_SPREAD_POINTS terlalu kecil). |

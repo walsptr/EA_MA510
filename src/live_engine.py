@@ -1,5 +1,6 @@
 import time
 from typing import Optional, Any
+import pandas as pd
 from src.config import Config
 from src.strategy import evaluate_signal, Signal
 from src.data_feed import get_latest
@@ -35,6 +36,15 @@ class LiveEngine:
 
         latest_entry = entry_df.iloc[-1]
         latest_time = latest_entry.time if "time" in latest_entry.index else latest_entry.name
+        tz = getattr(self.cfg, "display_timezone", "UTC") or "UTC"
+        try:
+            ts = pd.Timestamp(latest_time)
+            if ts.tzinfo is None:
+                ts = ts.tz_localize("UTC")
+            ts_disp = ts.tz_convert(tz)
+            latest_time_disp = ts_disp.isoformat()
+        except Exception:
+            latest_time_disp = str(latest_time)
 
         if latest_time == self._last_processed_entry_candle_time:
             return True
@@ -49,15 +59,26 @@ class LiveEngine:
         self._last_processed_entry_candle_time = latest_time
 
         if signal is not None:
-            self.logger.info(f"[LIVE] Signal {latest_time}: direction={signal.direction} | reason={signal.reason} | close={signal.entry_timeframe_close_price}")
+            self.logger.info(f"[LIVE] Signal {latest_time_disp}: direction={signal.direction} | reason={signal.reason} | close={signal.entry_timeframe_close_price}")
         else:
-            self.logger.info(f"[LIVE] Signal {latest_time}: TIDAK TERDEFINISI (error evaluasi)")
+            self.logger.info(f"[LIVE] Signal {latest_time_disp}: TIDAK TERDEFINISI (error evaluasi)")
 
         if signal is not None and signal.direction != "NONE":
+            start = getattr(self.cfg, "trading_window_start", None)
+            end = getattr(self.cfg, "trading_window_end", None)
+            if start is not None and end is not None:
+                try:
+                    tod = ts_disp.time()
+                    within = (start <= tod < end) if (start < end) else (tod >= start or tod < end)
+                except Exception:
+                    within = True
+                if not within:
+                    self.logger.info(f"[LIVE] SKIP entry (outside trading window) {latest_time_disp}")
+                    return True
             if self._send_real_orders:
-                self.logger.warning(f"[LIVE] LIVE_SEND_REAL_ORDERS=true → akan open {signal.direction}. Fitur order_send TIDAK TERIMPLEMENTASI di skeleton ini (gunakan BacktestOrderExecutor untuk test).")
+                self.logger.warning(f"[LIVE] LIVE_SEND_REAL_ORDERS=true -> akan open {signal.direction}. Fitur order_send TIDAK TERIMPLEMENTASI di skeleton ini (gunakan BacktestOrderExecutor untuk test).")
             else:
-                self.logger.info(f"[LIVE] WOULD OPEN {signal.direction} @ {signal.entry_timeframe_close_price} | reason={signal.reason} (LIVE_SEND_REAL_ORDERS=false → tidak mengirim order sungguhan)")
+                self.logger.info(f"[LIVE] WOULD OPEN {signal.direction} @ {signal.entry_timeframe_close_price} | reason={signal.reason} (LIVE_SEND_REAL_ORDERS=false -> tidak mengirim order sungguhan)")
         return True
 
     def run(self, max_iterations: Optional[int] = None) -> None:
@@ -71,13 +92,13 @@ class LiveEngine:
             while True:
                 cont = self._single_iteration()
                 if not cont:
-                    self.logger.info("[LIVE] _single_iteration return False → exit loop.")
+                    self.logger.info("[LIVE] _single_iteration return False -> exit loop.")
                     break
                 it += 1
                 if max_iterations is not None and it >= max_iterations:
-                    self.logger.info(f"[LIVE] Mencapai max_iterations={max_iterations} → exit loop (test mode).")
+                    self.logger.info(f"[LIVE] Mencapai max_iterations={max_iterations} -> exit loop (test mode).")
                     break
                 time.sleep(max(1, self.cfg.live_poll_interval_seconds))
         except KeyboardInterrupt:
-            self.logger.info("[LIVE] KeyboardInterrupt → graceful shutdown.")
+            self.logger.info("[LIVE] KeyboardInterrupt -> graceful shutdown.")
         self.logger.info("[LIVE] LiveEngine selesai.")

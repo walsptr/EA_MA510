@@ -22,7 +22,7 @@ def make_minimal_cfg(initial_balance=1000.0):
         ma_low=5, ma_high=10, ma_type="EMA",
         backtest_start_date=date(2025, 1, 1), backtest_end_date=date(2025, 1, 2),
         backtest_initial_balance=initial_balance,
-        backtest_spread_points=0, backtest_slippage_points=0,
+        backtest_spread_points=0, backtest_slippage_points=0, backtest_use_mt5=False,
         sizing_mode="FIXED_LOT", fixed_lot_size=0.1, risk_percent_per_trade=None,
         sl_mode="FIXED", sl_points=100, sl_atr_multiplier=None, sl_dollar=None,
         tp_mode="FIXED", tp_points=200, tp_atr_multiplier=None, tp_dollar=None,
@@ -30,9 +30,10 @@ def make_minimal_cfg(initial_balance=1000.0):
         trailing_stop_enabled=False, trailing_stop_points=None, trailing_stop_activation_points=None,
         exit_on_opposite_signal=False, max_concurrent_positions=1,
         max_spread_points=None, max_daily_loss_percent=None,
+        trading_window_start=None, trading_window_end=None,
         magic_number=1, live_poll_interval_seconds=5,
         mt5_login=None, mt5_password=None, mt5_server=None, mt5_terminal_path=None,
-        log_level="INFO", log_dir="./logs", report_dir="./reports",
+        log_level="INFO", log_dir="./logs", report_dir="./reports", display_timezone="UTC",
     )
 
 

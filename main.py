@@ -49,26 +49,14 @@ def main() -> int:
     exit_code = 0
     try:
         if cfg.mode == "BACKTEST":
-            logger.info(f"[MAIN] Starting BACKTEST mode: {cfg.backtest_start_date} → {cfg.backtest_end_date}")
+            logger.info(f"[MAIN] Starting BACKTEST mode: {cfg.backtest_start_date} -> {cfg.backtest_end_date}")
             logger.info(f"[MAIN] Initial balance = ${cfg.backtest_initial_balance:,.2f}")
-            import os as _os
-            use_mt5_env = _os.environ.get("BACKTEST_USE_MT5", "false").strip().lower() in ("1", "true", "yes", "on")
-            use_mt5 = use_mt5_env
-            if use_mt5_env:
-                try:
-                    import MetaTrader5 as _mt5_probe  # noqa: F401
-                    logger.info("[MAIN] BACKTEST_USE_MT5=true → mencoba menggunakan data riil MT5. Jika gagal fallback ke synthetic.")
-                except ImportError:
-                    logger.warning(
-                        "[MAIN] ⚠️  BACKTEST_USE_MT5=true tapi package MetaTrader5 TIDAK TERINSTALL / TIDAK TERSEDIA di OS ini. "
-                        "MetaTrader5 PyPI package HANYA BERJALAN DI WINDOWS (butuh MT5 Terminal.exe). "
-                        "AUTO FALLBACK ke SYNTHETIC data (tidak perlu install MT5)."
-                    )
-                    use_mt5 = False
+            if cfg.backtest_use_mt5:
+                logger.info("[MAIN] BACKTEST_USE_MT5=true -> menggunakan data historis RIIL dari MT5 terminal.")
             else:
-                logger.info("[MAIN] Menggunakan SYNTHETIC data (BACKTEST_USE_MT5=false). Tidak memerlukan MT5 terminal.")
+                logger.info("[MAIN] BACKTEST_USE_MT5=false -> menggunakan data SYNTHETIC (tidak perlu MT5 terminal).")
 
-            trade_log, equity_curve = run_backtest(cfg, use_mt5=use_mt5)
+            trade_log, equity_curve = run_backtest(cfg, use_mt5=cfg.backtest_use_mt5)
             logger.info(f"[MAIN] Backtest selesai: {len(trade_log)} trade log entries, {len(equity_curve)} equity curve points.")
 
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -84,7 +72,7 @@ def main() -> int:
             logger.info(f"[REPORT] Total Return        : {summary.get('total_return_pct', 0):.2f}%")
             logger.info(f"[REPORT] Max Drawdown        : {summary.get('max_drawdown_pct', 0):.2f}%")
             logger.info(f"[REPORT] Expectancy / Trade  : ${summary.get('expectancy_per_trade', 0):.4f}")
-            logger.info(f"[REPORT] Periode             : {summary.get('start_date', '?')} → {summary.get('end_date', '?')}")
+            logger.info(f"[REPORT] Periode             : {summary.get('start_date', '?')} -> {summary.get('end_date', '?')}")
             logger.info("-" * 40)
             logger.info(f"[MAIN] BACKTEST mode selesai sukses.")
 
@@ -103,7 +91,7 @@ def main() -> int:
             exit_code = 1
 
     except KeyboardInterrupt:
-        logger.info("[MAIN] Diterima KeyboardInterrupt → shutdown...")
+        logger.info("[MAIN] Diterima KeyboardInterrupt -> shutdown...")
         exit_code = 0
     except Exception as e:
         logger.exception(f"[MAIN] FATAL ERROR selama eksekusi {cfg.mode}: {type(e).__name__}: {e}")

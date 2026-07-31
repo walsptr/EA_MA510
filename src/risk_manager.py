@@ -56,6 +56,12 @@ def compute_trade_plan(
         symbol_info.trade_tick_value / symbol_info.trade_tick_size * point
     )
 
+    spread_points = cfg.backtest_spread_points if cfg.mode == "BACKTEST" else 0.0
+    if signal.direction == "BUY":
+        fill_price = entry_price + (spread_points * point) / 2
+    else:
+        fill_price = entry_price - (spread_points * point) / 2
+
     # ========== LANGKAH 1: Tentukan preliminary_sl_distance ==========
     if cfg.sl_mode == "ATR":
         if atr_value is None:
@@ -150,11 +156,11 @@ def compute_trade_plan(
 
     # ========== LANGKAH e: BUY/SELL sign untuk sl_price & tp_price ==========
     if signal.direction == "BUY":
-        sl_price = entry_price - sl_distance
-        tp_price = entry_price + tp_distance
+        sl_price = fill_price - sl_distance
+        tp_price = fill_price + tp_distance
     else:
-        sl_price = entry_price + sl_distance
-        tp_price = entry_price - tp_distance
+        sl_price = fill_price + sl_distance
+        tp_price = fill_price - tp_distance
 
     # ========== LANGKAH j: Round sl_price & tp_price ke digits ==========
     digits = symbol_info.digits
@@ -163,10 +169,10 @@ def compute_trade_plan(
 
     # ========== Final defensive check (SELL: tp < entry < sl, BUY: sl < entry < tp) ==========
     if signal.direction == "BUY":
-        if sl_price >= entry_price or tp_price <= entry_price:
+        if sl_price >= fill_price or tp_price <= fill_price:
             return None
     else:
-        if sl_price <= entry_price or tp_price >= entry_price:
+        if sl_price <= fill_price or tp_price >= fill_price:
             return None
 
     return TradePlan(

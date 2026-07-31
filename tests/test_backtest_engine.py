@@ -28,6 +28,7 @@ def make_backtest_cfg() -> Config:
         backtest_initial_balance=1000.0,
         backtest_spread_points=0,
         backtest_slippage_points=0,
+        backtest_use_mt5=False,
         sizing_mode="FIXED_LOT",
         fixed_lot_size=0.1,
         risk_percent_per_trade=None,
@@ -47,6 +48,8 @@ def make_backtest_cfg() -> Config:
         max_concurrent_positions=1,
         max_spread_points=None,
         max_daily_loss_percent=None,
+        trading_window_start=None,
+        trading_window_end=None,
         magic_number=12345,
         live_poll_interval_seconds=5,
         mt5_login=None,
@@ -56,6 +59,7 @@ def make_backtest_cfg() -> Config:
         log_level="INFO",
         log_dir="./logs",
         report_dir="./reports",
+        display_timezone="UTC",
     )
 
 

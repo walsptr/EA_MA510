@@ -1,7 +1,8 @@
 import os
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, time
 from typing import Literal, Optional
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
@@ -31,6 +32,7 @@ class Config:
     backtest_initial_balance: float
     backtest_spread_points: float
     backtest_slippage_points: float
+    backtest_use_mt5: bool
 
     sizing_mode: Literal["FIXED_LOT", "RISK_PERCENT"]
     fixed_lot_size: Optional[float]
@@ -54,6 +56,8 @@ class Config:
     max_concurrent_positions: int
     max_spread_points: Optional[float]
     max_daily_loss_percent: Optional[float]
+    trading_window_start: Optional[time]
+    trading_window_end: Optional[time]
 
     magic_number: int
     live_poll_interval_seconds: int
@@ -66,6 +70,7 @@ class Config:
     log_level: str
     log_dir: str
     report_dir: str
+    display_timezone: str
 
 
 def _parse_bool(value: Optional[str], default: bool) -> bool:
@@ -90,6 +95,20 @@ def _parse_date(value: Optional[str]) -> Optional[date]:
     if value is None or value.strip() == "":
         return None
     return date.fromisoformat(value.strip())
+
+
+def _parse_hhmm(value: Optional[str]) -> Optional[time]:
+    if value is None or value.strip() == "":
+        return None
+    s = value.strip()
+    parts = s.split(":")
+    if len(parts) != 2:
+        raise ValueError(f"Invalid HH:MM: {s!r}")
+    hh = int(parts[0])
+    mm = int(parts[1])
+    if hh < 0 or hh > 23 or mm < 0 or mm > 59:
+        raise ValueError(f"Invalid HH:MM: {s!r}")
+    return time(hour=hh, minute=mm)
 
 
 def load_config(use_dotenv: bool = True) -> Config:
@@ -153,6 +172,22 @@ def load_config(use_dotenv: bool = True) -> Config:
     backtest_initial_balance = float(os.environ.get("BACKTEST_INITIAL_BALANCE", "1000"))
     backtest_spread_points = float(os.environ.get("BACKTEST_SPREAD_POINTS", "0"))
     backtest_slippage_points = float(os.environ.get("BACKTEST_SLIPPAGE_POINTS", "0"))
+
+    backtest_use_mt5_raw = os.environ.get("BACKTEST_USE_MT5")
+    if backtest_use_mt5_raw is None or backtest_use_mt5_raw.strip() == "":
+        backtest_use_mt5 = os.name == "nt"
+    else:
+        backtest_use_mt5 = _parse_bool(backtest_use_mt5_raw, False)
+    if mode == "BACKTEST" and backtest_use_mt5:
+        if os.name != "nt":
+            raise ConfigError("BACKTEST_USE_MT5=true hanya didukung di Windows.")
+        try:
+            import MetaTrader5 as _mt5_probe  # noqa: F401
+        except ImportError:
+            raise ConfigError(
+                "BACKTEST_USE_MT5=true tapi package MetaTrader5 belum terinstall. "
+                "Install via: pip install MetaTrader5 (Windows-only), atau set BACKTEST_USE_MT5=false untuk synthetic."
+            )
 
     sizing_mode_raw = os.environ.get("SIZING_MODE", "FIXED_LOT").strip().upper()
     if sizing_mode_raw not in ("FIXED_LOT", "RISK_PERCENT"):
@@ -261,6 +296,19 @@ def load_config(use_dotenv: bool = True) -> Config:
     max_spread_points = _parse_optional_float(os.environ.get("MAX_SPREAD_POINTS"))
     max_daily_loss_percent = _parse_optional_float(os.environ.get("MAX_DAILY_LOSS_PERCENT"))
 
+    trading_window_start_raw = os.environ.get("TRADING_WINDOW_START")
+    trading_window_end_raw = os.environ.get("TRADING_WINDOW_END")
+    try:
+        trading_window_start = _parse_hhmm(trading_window_start_raw)
+        trading_window_end = _parse_hhmm(trading_window_end_raw)
+    except Exception as e:
+        raise ConfigError(f"TRADING_WINDOW_START/END harus format HH:MM. Error: {e}")
+    if (trading_window_start is None) != (trading_window_end is None):
+        raise ConfigError("TRADING_WINDOW_START dan TRADING_WINDOW_END harus diisi keduanya atau dikosongkan keduanya.")
+    if trading_window_start is not None and trading_window_end is not None:
+        if trading_window_start == trading_window_end:
+            raise ConfigError("TRADING_WINDOW_START dan TRADING_WINDOW_END tidak boleh sama.")
+
     magic_number = int(os.environ.get("MAGIC_NUMBER", "20260101"))
     live_poll_interval_seconds = int(os.environ.get("LIVE_POLL_INTERVAL_SECONDS", "5"))
     if live_poll_interval_seconds <= 0:
@@ -286,6 +334,11 @@ def load_config(use_dotenv: bool = True) -> Config:
     log_level = log_level_raw
     log_dir = os.environ.get("LOG_DIR", "./logs").strip()
     report_dir = os.environ.get("REPORT_DIR", "./reports").strip()
+    display_timezone = os.environ.get("DISPLAY_TIMEZONE", "UTC").strip() or "UTC"
+    try:
+        ZoneInfo(display_timezone)
+    except Exception:
+        raise ConfigError(f"DISPLAY_TIMEZONE tidak valid: {display_timezone!r}")
 
     return Config(
         mode=mode,
@@ -301,6 +354,7 @@ def load_config(use_dotenv: bool = True) -> Config:
         backtest_initial_balance=backtest_initial_balance,
         backtest_spread_points=backtest_spread_points,
         backtest_slippage_points=backtest_slippage_points,
+        backtest_use_mt5=backtest_use_mt5,
         sizing_mode=sizing_mode,
         fixed_lot_size=fixed_lot_size,
         risk_percent_per_trade=risk_percent_per_trade,
@@ -320,6 +374,8 @@ def load_config(use_dotenv: bool = True) -> Config:
         max_concurrent_positions=max_concurrent_positions,
         max_spread_points=max_spread_points,
         max_daily_loss_percent=max_daily_loss_percent,
+        trading_window_start=trading_window_start,
+        trading_window_end=trading_window_end,
         magic_number=magic_number,
         live_poll_interval_seconds=live_poll_interval_seconds,
         mt5_login=mt5_login,
@@ -329,4 +385,5 @@ def load_config(use_dotenv: bool = True) -> Config:
         log_level=log_level,
         log_dir=log_dir,
         report_dir=report_dir,
+        display_timezone=display_timezone,
     )

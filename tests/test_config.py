@@ -38,7 +38,8 @@ def _set_env(monkeypatch, env_dict):
                  "MAX_CONCURRENT_POSITIONS","MAX_SPREAD_POINTS","MAX_DAILY_LOSS_PERCENT",
                  "MAGIC_NUMBER","LIVE_POLL_INTERVAL_SECONDS",
                  "MT5_LOGIN","MT5_PASSWORD","MT5_SERVER","MT5_TERMINAL_PATH",
-                 "LOG_LEVEL","LOG_DIR","REPORT_DIR"]:
+                 "LOG_LEVEL","LOG_DIR","REPORT_DIR","DISPLAY_TIMEZONE",
+                 "TRADING_WINDOW_START","TRADING_WINDOW_END"]:
             monkeypatch.delenv(k, raising=False)
     for k, v in env_dict.items():
         monkeypatch.setenv(k, v)
@@ -109,6 +110,43 @@ def test_config_dollar_tp_negative(monkeypatch):
     env["TP_MODE"] = "DOLLAR"
     env["TP_DOLLAR"] = "-10"
     env.pop("TP_POINTS", None)
+    _set_env(monkeypatch, env)
+    with pytest.raises(ConfigError):
+        load_config(use_dotenv=False)
+
+
+def test_config_trading_window_valid(monkeypatch):
+    env = _env_base()
+    env["TRADING_WINDOW_START"] = "07:00"
+    env["TRADING_WINDOW_END"] = "16:00"
+    _set_env(monkeypatch, env)
+    cfg = load_config(use_dotenv=False)
+    assert cfg.trading_window_start is not None
+    assert cfg.trading_window_end is not None
+
+
+def test_config_trading_window_missing_end(monkeypatch):
+    env = _env_base()
+    env["TRADING_WINDOW_START"] = "07:00"
+    env.pop("TRADING_WINDOW_END", None)
+    _set_env(monkeypatch, env)
+    with pytest.raises(ConfigError):
+        load_config(use_dotenv=False)
+
+
+def test_config_trading_window_invalid_format(monkeypatch):
+    env = _env_base()
+    env["TRADING_WINDOW_START"] = "7"
+    env["TRADING_WINDOW_END"] = "16:00"
+    _set_env(monkeypatch, env)
+    with pytest.raises(ConfigError):
+        load_config(use_dotenv=False)
+
+
+def test_config_trading_window_equal_start_end_invalid(monkeypatch):
+    env = _env_base()
+    env["TRADING_WINDOW_START"] = "07:00"
+    env["TRADING_WINDOW_END"] = "07:00"
     _set_env(monkeypatch, env)
     with pytest.raises(ConfigError):
         load_config(use_dotenv=False)

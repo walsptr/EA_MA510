@@ -34,6 +34,7 @@
 | `BACKTEST_INITIAL_BALANCE` | float | no | `1000` | Starting virtual balance for equity curve/sizing. |
 | `BACKTEST_SPREAD_POINTS` | float | no | `0` (use live spread if available) | Simulated spread applied to fills. |
 | `BACKTEST_SLIPPAGE_POINTS` | float | no | `0` | Simulated slippage applied to fills. |
+| `BACKTEST_USE_MT5` | bool | no | Windows: `true`, non-Windows: `false` | Jika `true`, tarik data historis dari MT5 terminal. Jika `false`, pakai data synthetic. |
 
 ### 1.5 Position Sizing
 
@@ -70,6 +71,8 @@
 | Var | Type | Required | Default | Notes |
 |---|---|---|---|---|
 | `EXIT_ON_OPPOSITE_SIGNAL` | bool | no | `false` | |
+| `TRADING_WINDOW_START` | `HH:MM` | no | none (disabled) | Jam mulai boleh entry, mengikuti `DISPLAY_TIMEZONE`. |
+| `TRADING_WINDOW_END` | `HH:MM` | no | none (disabled) | Jam selesai boleh entry, mengikuti `DISPLAY_TIMEZONE`. Support lintas hari jika START > END. |
 | `MAX_CONCURRENT_POSITIONS` | int | no | `1` | Per direction or total — implementation must document which; recommended: total open positions for `SYMBOL` opened by this bot's `MAGIC_NUMBER`. |
 | `MAX_SPREAD_POINTS` | float | no | none (no guard) | Live mode entry guard. |
 | `MAX_DAILY_LOSS_PERCENT` | float | no | none (no breaker) | Live mode circuit breaker. |
@@ -92,6 +95,7 @@
 | `LOG_LEVEL` | `DEBUG`\|`INFO`\|`WARNING`\|`ERROR` | no | `INFO` | |
 | `LOG_DIR` | string | no | `./logs` | |
 | `REPORT_DIR` | string | no | `./reports` | Backtest output location. |
+| `DISPLAY_TIMEZONE` | string | no | `UTC` | IANA timezone name untuk display di report/log. Contoh: `UTC`, `Asia/Jakarta`. |
 
 ### 1.11 Example `.env`
 
@@ -143,6 +147,11 @@ MT5_TERMINAL_PATH=
 LOG_LEVEL=INFO
 LOG_DIR=./logs
 REPORT_DIR=./reports
+DISPLAY_TIMEZONE=UTC
+
+# Trading window (optional)
+# TRADING_WINDOW_START=07:00
+# TRADING_WINDOW_END=16:00
 ```
 
 ## 2. Timeframe Enum → MT5 Constant Mapping
@@ -199,9 +208,11 @@ CSV/DB table `trades`:
 | `trade_id` | int | Auto-increment. |
 | `symbol` | string | |
 | `direction` | `BUY`\|`SELL` | |
-| `open_time` | datetime | |
+| `open_time` | datetime | Di `trades.csv`, nilai ini ditulis dalam `DISPLAY_TIMEZONE`. |
+| `open_time_hm` | string | Format `HH:MM` mengikuti `DISPLAY_TIMEZONE`. |
 | `open_price` | float | |
-| `close_time` | datetime | nullable while open. |
+| `close_time` | datetime | nullable while open. Di `trades.csv`, nilai ini ditulis dalam `DISPLAY_TIMEZONE`. |
+| `close_time_hm` | string | Format `HH:MM` mengikuti `DISPLAY_TIMEZONE`. |
 | `close_price` | float | nullable while open. |
 | `lot_size` | float | |
 | `sl_price` | float | |
