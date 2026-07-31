@@ -26,9 +26,14 @@ class Config:
     ma_low: int
     ma_high: int
     ma_type: Literal["SMA", "EMA"]
+    trend_ma_low_1: Optional[int]
+    trend_ma_high_1: Optional[int]
+    trend_ma_low_2: Optional[int]
+    trend_ma_high_2: Optional[int]
 
     backtest_start_date: Optional[date]
     backtest_end_date: Optional[date]
+    backtest_warmup_days: int
     backtest_initial_balance: float
     backtest_spread_points: float
     backtest_slippage_points: float
@@ -61,6 +66,7 @@ class Config:
 
     magic_number: int
     live_poll_interval_seconds: int
+    live_warmup_days: int
 
     mt5_login: Optional[int]
     mt5_password: Optional[str]
@@ -158,6 +164,30 @@ def load_config(use_dotenv: bool = True) -> Config:
         raise ConfigError(f"MA_TYPE harus SMA atau EMA, got: {ma_type_raw!r}")
     ma_type: Literal["SMA", "EMA"] = ma_type_raw  # type: ignore[assignment]
 
+    trend_ma_low_1 = _parse_optional_int(os.environ.get("TREND_MA_LOW_1"))
+    trend_ma_high_1 = _parse_optional_int(os.environ.get("TREND_MA_HIGH_1"))
+    trend_ma_low_2 = _parse_optional_int(os.environ.get("TREND_MA_LOW_2"))
+    trend_ma_high_2 = _parse_optional_int(os.environ.get("TREND_MA_HIGH_2"))
+    for pair_name, low, high in (
+        ("1", trend_ma_low_1, trend_ma_high_1),
+        ("2", trend_ma_low_2, trend_ma_high_2),
+    ):
+        pair_any_set = (low is not None) or (high is not None)
+        if not pair_any_set:
+            continue
+        if low is None or high is None:
+            raise ConfigError(
+                f"TREND_MA_LOW_{pair_name} dan TREND_MA_HIGH_{pair_name} harus diisi berpasangan."
+            )
+        if low <= 0:
+            raise ConfigError(f"TREND_MA_LOW_{pair_name} harus > 0, got: {low}")
+        if high <= 0:
+            raise ConfigError(f"TREND_MA_HIGH_{pair_name} harus > 0, got: {high}")
+        if low >= high:
+            raise ConfigError(
+                f"TREND_MA_LOW_{pair_name} ({low}) harus < TREND_MA_HIGH_{pair_name} ({high})"
+            )
+
     backtest_start_date = _parse_date(os.environ.get("BACKTEST_START_DATE"))
     backtest_end_date = _parse_date(os.environ.get("BACKTEST_END_DATE"))
     if mode == "BACKTEST":
@@ -170,6 +200,13 @@ def load_config(use_dotenv: bool = True) -> Config:
                 f"BACKTEST_START_DATE ({backtest_start_date}) harus < BACKTEST_END_DATE ({backtest_end_date})"
             )
     backtest_initial_balance = float(os.environ.get("BACKTEST_INITIAL_BALANCE", "1000"))
+    if backtest_initial_balance <= 0:
+        raise ConfigError(
+            f"BACKTEST_INITIAL_BALANCE harus > 0, got: {backtest_initial_balance}"
+        )
+    backtest_warmup_days = int(os.environ.get("BACKTEST_WARMUP_DAYS", "0"))
+    if backtest_warmup_days < 0:
+        raise ConfigError(f"BACKTEST_WARMUP_DAYS harus >= 0, got: {backtest_warmup_days}")
     backtest_spread_points = float(os.environ.get("BACKTEST_SPREAD_POINTS", "0"))
     backtest_slippage_points = float(os.environ.get("BACKTEST_SLIPPAGE_POINTS", "0"))
 
@@ -315,6 +352,9 @@ def load_config(use_dotenv: bool = True) -> Config:
         raise ConfigError(
             f"LIVE_POLL_INTERVAL_SECONDS harus > 0, got: {live_poll_interval_seconds}"
         )
+    live_warmup_days = int(os.environ.get("LIVE_WARMUP_DAYS", "0"))
+    if live_warmup_days < 0:
+        raise ConfigError(f"LIVE_WARMUP_DAYS harus >= 0, got: {live_warmup_days}")
 
     mt5_login = _parse_optional_int(os.environ.get("MT5_LOGIN"))
     mt5_password_raw = os.environ.get("MT5_PASSWORD")
@@ -349,8 +389,13 @@ def load_config(use_dotenv: bool = True) -> Config:
         ma_low=ma_low,
         ma_high=ma_high,
         ma_type=ma_type,
+        trend_ma_low_1=trend_ma_low_1,
+        trend_ma_high_1=trend_ma_high_1,
+        trend_ma_low_2=trend_ma_low_2,
+        trend_ma_high_2=trend_ma_high_2,
         backtest_start_date=backtest_start_date,
         backtest_end_date=backtest_end_date,
+        backtest_warmup_days=backtest_warmup_days,
         backtest_initial_balance=backtest_initial_balance,
         backtest_spread_points=backtest_spread_points,
         backtest_slippage_points=backtest_slippage_points,
@@ -378,6 +423,7 @@ def load_config(use_dotenv: bool = True) -> Config:
         trading_window_end=trading_window_end,
         magic_number=magic_number,
         live_poll_interval_seconds=live_poll_interval_seconds,
+        live_warmup_days=live_warmup_days,
         mt5_login=mt5_login,
         mt5_password=mt5_password,
         mt5_server=mt5_server,

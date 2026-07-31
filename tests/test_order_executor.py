@@ -14,6 +14,7 @@ from src.order_executor import (
     TradeLogEntry,
     EquityPoint,
     BacktestOrderExecutor,
+    is_insufficient_funds_or_margin,
 )
 
 
@@ -39,8 +40,13 @@ def make_test_cfg() -> Config:
         ma_low=5,
         ma_high=10,
         ma_type="EMA",
+        trend_ma_low_1=None,
+        trend_ma_high_1=None,
+        trend_ma_low_2=None,
+        trend_ma_high_2=None,
         backtest_start_date=date(2025, 1, 1),
         backtest_end_date=date(2025, 12, 31),
+        backtest_warmup_days=0,
         backtest_initial_balance=1000.0,
         backtest_spread_points=0,
         backtest_slippage_points=0,
@@ -68,6 +74,7 @@ def make_test_cfg() -> Config:
         trading_window_end=None,
         magic_number=1,
         live_poll_interval_seconds=5,
+        live_warmup_days=0,
         mt5_login=None,
         mt5_password=None,
         mt5_server=None,
@@ -210,3 +217,15 @@ def test_simulate_pnl_sign():
     pnl_up_sell = ex._simulate_pnl(pos_sell, 2002.0)
     assert pnl_down_sell > 0
     assert pnl_up_sell < 0
+
+
+def test_is_insufficient_funds_or_margin_by_retcode():
+    assert is_insufficient_funds_or_margin(10019, "anything") is True
+    assert is_insufficient_funds_or_margin(10009, "Request completed") is False
+
+
+def test_is_insufficient_funds_or_margin_by_message():
+    assert is_insufficient_funds_or_margin(None, "TRADE_RETCODE_NO_MONEY") is True
+    assert is_insufficient_funds_or_margin(None, "insufficient funds") is True
+    assert is_insufficient_funds_or_margin(None, "not enough margin") is True
+    assert is_insufficient_funds_or_margin(None, "some other error") is False

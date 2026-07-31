@@ -68,7 +68,7 @@ output differently (simulate a fill vs. send a real order).
    across the backtest date range.
 3. For each closed bar on `ENTRY_TIMEFRAME` (walking forward in time):
    a. Slice each trend timeframe's history up to the latest candle that had actually
-      closed by that point in time (no look-ahead — RULES.md §7).
+      closed by that point in time (no look-ahead — RULES.md §8).
    b. Call `strategy.evaluate_signal(...)`.
    c. If a signal fires and no conflicting open position exists, call `risk_manager` for
       lot size/SL/TP, then `BacktestOrderExecutor.open_position(...)`.

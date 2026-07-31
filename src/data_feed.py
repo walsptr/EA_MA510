@@ -133,6 +133,24 @@ def get_latest(symbol: str, timeframe: str, n: int = 200) -> pd.DataFrame:
         return _empty_schema_df()
 
 
+def get_latest_by_days(symbol: str, timeframe: str, lookback_days: int) -> pd.DataFrame:
+    try:
+        if lookback_days <= 0:
+            return get_latest(symbol, timeframe, n=200)
+        import MetaTrader5 as mt5
+        tf_const = _mt5_timeframe(timeframe)
+        to_dt = datetime.utcnow()
+        from_dt = to_dt - timedelta(days=int(lookback_days))
+        rates = mt5.copy_rates_range(symbol, tf_const, from_dt, to_dt)
+        return _rates_to_df(rates, timeframe)
+    except Exception as e:
+        print(
+            f"[WARNING] get_latest_by_days({symbol!r}, {timeframe!r}, lookback_days={lookback_days}) "
+            f"error: {e}. Returning empty DataFrame."
+        )
+        return _empty_schema_df()
+
+
 def _to_dt(d) -> datetime:
     if isinstance(d, datetime):
         return d

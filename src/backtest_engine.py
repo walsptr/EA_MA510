@@ -5,9 +5,28 @@ from src.risk_manager import compute_trade_plan, SymbolInfo, Signal as RiskSigna
 from src.order_executor import BacktestOrderExecutor, TradeLogEntry, EquityPoint, TradeResult
 from src.data_feed import (generate_synthetic_candles, get_history, get_synthetic_for_all_timeframes)
 import pandas as pd
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Tuple, List, Optional, Any
 import time
+import logging
+
+
+_LOGGER = logging.getLogger("ea_ma510")
+
+
+def _log_backtest(msg: str) -> None:
+    if getattr(_LOGGER, "handlers", None):
+        _LOGGER.info(msg)
+    else:
+        print(msg)
+
+
+def _format_display_ts(cfg: Config, ts: Any) -> str:
+    tz = getattr(cfg, "display_timezone", "UTC") or "UTC"
+    t = pd.Timestamp(ts)
+    if t.tzinfo is None:
+        t = t.tz_localize("UTC")
+    return t.tz_convert(tz).isoformat()
 
 
 def _is_within_trading_window(cfg: Config, ts: Any) -> bool:
@@ -26,9 +45,16 @@ def _is_within_trading_window(cfg: Config, ts: Any) -> bool:
     return tod >= start or tod < end
 
 
+def _to_utc_ts(ts: Any) -> pd.Timestamp:
+    t = pd.Timestamp(ts)
+    if t.tzinfo is None:
+        t = t.tz_localize("UTC")
+    return t.tz_convert("UTC")
+
+
 def slice_up_to_time(df: pd.DataFrame, t: Any) -> pd.DataFrame:
     """
-    RULES.md §7: Hanya return candle dengan close_time <= t.
+    RULES.md §8: Hanya return candle dengan close_time <= t.
     Ini adalah NO-LOOK-AHEAD GUARD.
     df harus punya kolom close_time bertipe datetime.
     """
@@ -91,6 +117,9 @@ def run_backtest(cfg: Config, use_mt5: bool = False) -> Tuple[List[TradeLogEntry
     tf2 = cfg.trend_timeframe_2
     start_date = cfg.backtest_start_date or date(2025, 1, 1)
     end_date = cfg.backtest_end_date or date(2025, 1, 31)
+    warmup_days = getattr(cfg, "backtest_warmup_days", 0) or 0
+    fetch_start_date = start_date - timedelta(days=warmup_days)
+    start_ts = pd.Timestamp(datetime(start_date.year, start_date.month, start_date.day)).tz_localize("UTC")
 
     symbol_info: Optional[SymbolInfo] = None
 
@@ -109,9 +138,9 @@ def run_backtest(cfg: Config, use_mt5: bool = False) -> Tuple[List[TradeLogEntry
         client.initialize()
         client.login()
         try:
-            entry_history = get_history(cfg.symbol, entry_tf, start_date, end_date, raise_on_error=True)
-            tf1_history = get_history(cfg.symbol, tf1, start_date, end_date, raise_on_error=True)
-            tf2_history = get_history(cfg.symbol, tf2, start_date, end_date, raise_on_error=True)
+            entry_history = get_history(cfg.symbol, entry_tf, fetch_start_date, end_date, raise_on_error=True)
+            tf1_history = get_history(cfg.symbol, tf1, fetch_start_date, end_date, raise_on_error=True)
+            tf2_history = get_history(cfg.symbol, tf2, fetch_start_date, end_date, raise_on_error=True)
             info = client.symbol_info(cfg.symbol)
             if info:
                 symbol_info = SymbolInfo(**info)
@@ -124,9 +153,9 @@ def run_backtest(cfg: Config, use_mt5: bool = False) -> Tuple[List[TradeLogEntry
             tf1_history = dfs[tf1].copy()
             tf2_history = dfs[tf2].copy()
         except Exception:
-            entry_history = generate_synthetic_candles(entry_tf, start_date, end_date, pattern="bull_cross_then_bear")
-            tf1_history = generate_synthetic_candles(tf1, start_date, end_date, pattern="bull_cross_then_bear")
-            tf2_history = generate_synthetic_candles(tf2, start_date, end_date, pattern="bull_cross_then_bear")
+            entry_history = generate_synthetic_candles(entry_tf, fetch_start_date, end_date, pattern="bull_cross_then_bear")
+            tf1_history = generate_synthetic_candles(tf1, fetch_start_date, end_date, pattern="bull_cross_then_bear")
+            tf2_history = generate_synthetic_candles(tf2, fetch_start_date, end_date, pattern="bull_cross_then_bear")
 
     print(
         f"[BACKTEST] Data siap -> {entry_tf}:{len(entry_history)} bars, "
@@ -143,12 +172,20 @@ def run_backtest(cfg: Config, use_mt5: bool = False) -> Tuple[List[TradeLogEntry
 
     executor = BacktestOrderExecutor(cfg.backtest_initial_balance, cfg, symbol_info)
 
-    min_bars = max(cfg.ma_low, cfg.ma_high) + 1
-    warmup_bars = min_bars + 5
+    entry_min_bars = max(
+        cfg.ma_low,
+        cfg.ma_high,
+        cfg.trend_ma_low_1 or 0,
+        cfg.trend_ma_high_1 or 0,
+        cfg.trend_ma_low_2 or 0,
+        cfg.trend_ma_high_2 or 0,
+    ) + 1
+    warmup_bars = entry_min_bars + 5
 
     total_entry = len(entry_history)
     process_start = time.time()
     last_progress_pct = -1
+    last_processed_bar: Optional[pd.Series] = None
 
     for i in range(total_entry):
         if i < warmup_bars:
@@ -169,6 +206,10 @@ def run_backtest(cfg: Config, use_mt5: bool = False) -> Tuple[List[TradeLogEntry
             )
 
         bar = entry_history.iloc[i]
+        last_processed_bar = bar
+        bar_time_utc = _to_utc_ts(bar.time)
+        if bar_time_utc < start_ts:
+            continue
         bar_close_time = bar.close_time
         bar_close_price = bar.close
 
@@ -183,6 +224,12 @@ def run_backtest(cfg: Config, use_mt5: bool = False) -> Tuple[List[TradeLogEntry
         executor._update_equity(bar.time, mark_to_market_prices=mark_prices)
 
         executor.check_sl_tp_hits(bar)
+        if executor.balance <= 0:
+            stop_time = bar.close_time if "close_time" in bar.index else bar.time
+            _log_backtest(
+                f"[BACKTEST] STOP: balance <= 0 after processing closes | bar={i}/{total_entry - 1} | time={_format_display_ts(cfg, stop_time)} | balance={executor.balance:.2f}"
+            )
+            break
 
         atr_value: Optional[float] = None
         if cfg.sl_mode == "ATR" or cfg.tp_mode == "ATR":
@@ -231,10 +278,15 @@ def run_backtest(cfg: Config, use_mt5: bool = False) -> Tuple[List[TradeLogEntry
                 symbol=cfg.symbol,
             )
 
-    if total_entry > 0:
-        last_bar = entry_history.iloc[-1]
-        last_time = last_bar.time
-        last_close = last_bar.close
+    final_bar: Optional[pd.Series] = None
+    if last_processed_bar is not None:
+        final_bar = last_processed_bar
+    elif total_entry > 0:
+        final_bar = entry_history.iloc[-1]
+
+    if final_bar is not None:
+        last_time = final_bar.time
+        last_close = final_bar.close
         tickets_map = {}
         for pos in executor.get_open_positions():
             tickets_map[pos.ticket] = last_close
@@ -243,7 +295,7 @@ def run_backtest(cfg: Config, use_mt5: bool = False) -> Tuple[List[TradeLogEntry
 
     total_elapsed = time.time() - process_start
     print(
-        f"[BACKTEST] SELESAI 100% dalam {int(total_elapsed)}s. "
+        f"[BACKTEST] SELESAI dalam {int(total_elapsed)}s. "
         f"{len(executor.trade_log)} trade(s) tercatat."
     )
 

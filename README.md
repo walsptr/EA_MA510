@@ -10,56 +10,56 @@
 
 ---
 
-## 🎯 Strategi (RULES.md)
+## 🎯 Strategy (RULES.md)
 
-EA ini menjalankan strategi **3-Timeframe Moving Average Cross + Trend Confirmation** (100% rule-based, tidak ada black-box scoring):
+This bot runs a **3-timeframe Moving Average Cross + Trend Confirmation** strategy (100% rule-based, no black-box scoring):
 
-1. **Trend Filter (2 Timeframe Tinggi)** — Semua sinyal entry HANYA diterima jika ARAH TREND di `TREND_TIMEFRAME_1` **DAN** `TREND_TIMEFRAME_2` **SAMA ARAH** (cek: `MA(MA_LOW) > MA(MA_HIGH)` untuk bullish, `<` untuk bearish).
-2. **Entry Trigger (1 Timeframe Entry)** — Open position **HANYA pada event CROSS BARU** `MA(MA_LOW)` memotong `MA(MA_HIGH)` di `ENTRY_TIMEFRAME` (bukan state "MA sudah di atas").
-3. **Exit** — SL/TP per position sesuai config, atau `EXIT_ON_OPPOSITE_SIGNAL=true` (close existing jika sinyal berlawanan muncul).
+1. **Trend Filter (2 Higher Timeframes)** — An entry signal is only accepted if trend direction on `TREND_TIMEFRAME_1` **AND** `TREND_TIMEFRAME_2` agrees (check: `MA(MA_LOW) > MA(MA_HIGH)` for bullish, `<` for bearish).
+2. **Entry Trigger (Entry Timeframe)** — A position is opened **only on a fresh cross event** where `MA(MA_LOW)` crosses `MA(MA_HIGH)` on `ENTRY_TIMEFRAME` (not the state “MA is already above”).
+3. **Exit** — SL/TP per position per config, plus optional `EXIT_ON_OPPOSITE_SIGNAL=true` to close an existing position when an opposite valid signal appears.
 
-Contoh default (XAUUSD, EMA 5/10):
-- Entry TF: **M5** (trigger MA Cross)
-- Trend TF1: **M15** + Trend TF2: **M30** (keduanya harus bullish → baru boleh BUY)
+Default example (XAUUSD, EMA 5/10):
+- Entry TF: **M5** (MA Cross trigger)
+- Trend TF1: **M15** and Trend TF2: **M30** (both must be bullish to allow BUY)
 
-> 📚 Lihat [contexts/RULES.md](file:///home/syawal/Project/EA-MA510/contexts/RULES.md) untuk rule entry/exit LENGKAP (sumber kebenaran trading logic).
+See [contexts/RULES.md](contexts/RULES.md) for the full, authoritative entry/exit rules.
 
 ---
 
-## ✨ Fitur Unggulan
+## ✨ Key Features
 
-| Fitur | Keterangan |
+| Feature | Description |
 |---|---|
-| **⚙️ 100% Config via ENV** | Semua parameter (MA periods, TF, sizing, SL/TP, range backtest) di-file `.env` — **TIDAK ada magic number di code**. Lihat [SCHEMA.md](file:///home/syawal/Project/EA-MA510/contexts/SCHEMA.md). |
-| **💰 3 SL/TP Mode: FIXED / ATR / **DOLLAR** | — `DOLLAR` mode unggulan: set `SL_DOLLAR=5.0` → **risiko MAKSIMAL $5 per posisi** (terlepas dari lot size / pair apa). Bot otomatis hitung price distance-nya. |
-| **🧪 Synthetic Mode + Progress Log** | Backtest bisa pakai data **synthetic** (set `BACKTEST_USE_MT5=false`) tanpa perlu MT5 Terminal. Progress logging **setiap 5% bar** dengan ETA hitung mundur → TIDAK ada "program terasa hang". |
-| **🔀 Identical Signal: Backtest ↔ Live** | Backtest dan Live memanggil **fungsi `evaluate_signal()` YANG SAMA** di `src/strategy.py` — tidak ada logic fork (menghilangkan bug "backtest bagus, live jelek karena logic beda"). |
-| **🛡️ No Look-Ahead (Backtest Correctness)** | Setiap candle trend-TF yang dipakai saat eval signal di bar `t` **WAJIB punya `close_time <= t`** (dijaga oleh `slice_up_to_time`). Hasil backtest tidak overfit / tidak merefleksikan data masa depan. |
-| **🔑 Setiap Position Punya SL** | Tidak ada code path yang open position tanpa SL valid (jika SL calc gagal → trade di-skip, log error, **lanjut**, tidak open unprotected). |
-| **🧪 Unit Test Suite: 60/60 pytest PASS** | Test terpisah per module: config, indicators (MA/cross/ATR), strategy (clean buy/sell/no signal), risk_manager (sizing + DOLLAR mode), data_feed, order_executor, reporting, **dan 1 test end-to-end backtest**. |
-| **⚠️ Fail-Fast on Invalid Config** | ENV salah / missing / inconsistent → **error JELAS di startup SEBELUM** connect MT5 / mulai loop (bukan gagal di tengah run). |
+| **⚙️ 100% Config via ENV** | All parameters (MA periods, timeframes, sizing, SL/TP, backtest range) live in `.env` — no magic numbers in code. See [contexts/SCHEMA.md](contexts/SCHEMA.md). |
+| **💰 3 SL/TP Modes: FIXED / ATR / DOLLAR** | DOLLAR mode: set `SL_DOLLAR=5.0` → target **max $5 risk per position** (independent of lot size). The bot converts it to a price distance using symbol info. |
+| **🧪 Synthetic Mode + Progress Log** | Backtests can run on synthetic data (`BACKTEST_USE_MT5=false`) without an MT5 terminal. Progress logs every 5% with ETA. |
+| **🔀 Identical Signals: Backtest ↔ Live** | Backtest and live both call the same `evaluate_signal()` in `src/strategy.py` (no logic forks). |
+| **🛡️ No Look-Ahead (Backtest Correctness)** | Any trend-TF candle used at time `t` must satisfy `close_time <= t` (enforced by `slice_up_to_time`). |
+| **🔑 Every Position Has an SL** | No code path opens a position without a valid SL. If SL calculation fails → skip the trade (log + continue). |
+| **🧪 Unit Test Suite** | Tests cover config, indicators, strategy, risk manager, data feed, order executor, reporting, and an end-to-end backtest. |
+| **⚠️ Fail-Fast on Invalid Config** | Missing/invalid/inconsistent ENV fails early at startup (before connecting to MT5 / starting loops). |
 
 ---
 
-## 📂 Struktur Folder
+## 📂 Project Structure
 
 ```
 EA-MA510/
-├── main.py                  # Entrypoint (SATU-SATUNYA file .py di root). Jangan pindahkan.
-├── conftest.py              # Marker pytest (agar sys.path inject src.* di test). Jangan hapus.
-├── .env.example             # Template ENV. Copy → .env sebelum pakai.
-├── .gitignore               # Mengabaikan .env (RAHASIA!), venv, __pycache__, logs/, reports/, .trae/.
-├── requirements.txt         # Minimal deps. MetaTrader5 = Windows-only, TIDAK dimasukkan.
-├── AGENTS.md                # Instruksi khusus untuk AI Coding Agent (baca sebelum ubah code!).
+├── main.py                  # Entrypoint (the only .py file at repo root). Do not move it.
+├── conftest.py              # Pytest marker (injects src.* into sys.path for tests). Do not delete it.
+├── .env.example             # ENV template. Copy to .env before running.
+├── .gitignore               # Ignores .env (secrets), venv, __pycache__, logs/, reports/, .trae/.
+├── requirements.txt         # Minimal deps. MetaTrader5 is Windows-only and not included here.
+├── AGENTS.md                # Repo rules for AI agent / contributors (read before changing code).
 │
-├── src/                     # Semua logic code (Python package standar)
-│   ├── __init__.py          # Package marker (kosong).
-│   ├── config.py            # Load + validasi ENV. Semua ENV di-validasi di sini terlebih dahulu.
+├── src/                     # All application logic (standard Python package)
+│   ├── __init__.py          # Package marker (empty).
+│   ├── config.py            # Loads + validates ENV. All ENV validation happens here first.
 │   ├── logger.py            # Logger setup.
 │   ├── indicators.py        # MA (SMA/EMA), cross detection, ATR (pure pandas/numpy).
 │   ├── strategy.py          # ⭐ evaluate_signal() — PURE function (NO MT5 call, NO datetime.now, fully testable).
 │   ├── risk_manager.py      # compute_trade_plan(): FIXED_LOT vs RISK_PERCENT sizing. SL/TP FIXED/ATR/DOLLAR math.
-│   ├── data_feed.py         # get_history (MT5 riil) + generate_synthetic_candles + resample.
+│   ├── data_feed.py         # get_history (real MT5) + generate_synthetic_candles + resample.
 │   ├── mt5_client.py        # Wrapper MetaTrader5 package (connect, login, symbol_info).
 │   ├── order_executor.py    # BacktestOrderExecutor + (future) LiveOrderExecutor. SL BEFORE TP conservative.
 │   ├── backtest_engine.py   # Loop backtest: slice_up_to_time, signal → plan → open position, progress logging.
@@ -78,26 +78,26 @@ EA-MA510/
 │   ├── test_logger.py
 │   └── test_e2e_backtest.py
 │
-└── contexts/                # ⭐ Sumber Kebenaran Spesifikasi — WAJIB baca sebelum modifikasi!
-    ├── PRD.md               # Apa yang dibangun, scope, goals, non-goals.
-    ├── RULES.md             # 🚨 SUMBER KEBENARAN STRATEGI (entry/exit/sizing). Jika code beda → RULES.MD MENANG!
-    ├── ARCHITECTURE.md      # Batasan module, data flow (mana logic harus taro di mana).
-    ├── DESIGN.md            # Function/class signature, pseudo-code, algorithms.
-    └── SCHEMA.md            # 🚨 SEMUA ENV variable (name, type, required, default, validation).
+└── contexts/                # ⭐ Spec source of truth — read before making strategy changes
+    ├── PRD.md               # Product goals, scope, non-goals.
+    ├── RULES.md             # 🚨 Strategy source of truth (entry/exit/sizing). If code disagrees, RULES.md wins.
+    ├── ARCHITECTURE.md      # Module boundaries and data flow.
+    ├── DESIGN.md            # Function/class signatures, pseudo-code, algorithms.
+    └── SCHEMA.md            # 🚨 All ENV variables (name, type, required, defaults, validation).
 ```
 
 ---
 
 ## 🚀 Quick Start
 
-### Prasyarat
+### Prerequisites
 - Python **3.10+**
-- (Linux/MacOS) Tidak perlu install MetaTrader5 — backtest akan pakai **synthetic data otomatis**.
-- (Windows, mau data historis RIIL) Install MT5 Terminal.exe dan login ke account demo terlebih dahulu.
+- (Linux/macOS) You do not need MetaTrader5 — backtests can run on synthetic data.
+- (Windows, for real MT5 history) Install MT5 Terminal.exe and login to a demo account first.
 
 ---
 
-### 1) Install Dependencies (Semua OS)
+### 1) Install Dependencies (All OS)
 
 ```bash
 cd EA-MA510
@@ -113,14 +113,14 @@ pip install -r requirements.txt
 # ↑ Install: pandas, numpy, python-dotenv, pytest.
 ```
 
-**(Opsional, HANYA WINDOWS untuk Live / Data Riil MT5 History):**
+**(Optional, Windows only for live / real MT5 history):**
 ```powershell
-pip install MetaTrader5   # ⚠️ WINDOWS-ONLY! Akan FAIL di Linux/MacOS. Backtest synthetic TIDAK PERLU ini.
+pip install MetaTrader5   # ⚠️ WINDOWS ONLY (will fail on Linux/macOS). Synthetic backtests do not require it.
 ```
 
 ---
 
-### 2) Buat `.env` dari Template
+### 2) Create `.env` from Template
 
 ```bash
 # Linux / MacOS:
@@ -130,9 +130,9 @@ cp .env.example .env
 #   copy .env.example .env
 ```
 
-Edit `.env` sesuai kebutuhan Anda (symbol, range date, sizing, SL/TP mode). Lihat [contexts/SCHEMA.md](file:///home/syawal/Project/EA-MA510/contexts/SCHEMA.md) untuk daftar ENV LENGKAP beserta type/required/default/validation-nya.
+Edit `.env` as needed (symbol, date range, sizing, SL/TP mode). See [contexts/SCHEMA.md](contexts/SCHEMA.md) for the complete ENV reference (types, required/defaults, validations).
 
-**Contoh minimal (Backtest synthetic mode — jalan di SEMUA OS):**
+**Minimal example (Synthetic backtest — runs on all OS):**
 ```env
 MODE=BACKTEST
 SYMBOL=XAUUSDm
@@ -150,15 +150,15 @@ BACKTEST_END_DATE=2026-06-30
 BACKTEST_INITIAL_BALANCE=1000
 BACKTEST_SPREAD_POINTS=20
 BACKTEST_SLIPPAGE_POINTS=5
-BACKTEST_USE_MT5=false          # ← Pakai synthetic, tidak perlu MT5 install
+BACKTEST_USE_MT5=false          # ← Synthetic mode, no MT5 install needed
 
 SIZING_MODE=FIXED_LOT
 FIXED_LOT_SIZE=0.1
 
 SL_MODE=DOLLAR
-SL_DOLLAR=5.0                   # Risiko MAKSIMAL $5 per posisi
+SL_DOLLAR=5.0                   # Max $5 risk per position
 TP_MODE=DOLLAR
-TP_DOLLAR=15.0                  # Target $15 per posisi (R:R = 1:3)
+TP_DOLLAR=15.0                  # $15 target per position (R:R = 1:3)
 ATR_PERIOD=14
 
 LOG_LEVEL=INFO
@@ -168,13 +168,13 @@ REPORT_DIR=./reports
 
 ---
 
-### 3) Jalankan Backtest
+### 3) Run Backtest
 
 ```bash
 python main.py
 ```
 
-Anda akan melihat **progress logging setiap 5%** (contoh output):
+You will see **progress logging every 5%** (example output):
 ```
 [BACKTEST] Data siap → M5:25920 bars, M15:8640 bars, M30:4320 bars (sumber=SYNTHETIC). Loop dimulai...
 [BACKTEST]   0% | bar 16/25920 | elapsed 0s | ETA ???
@@ -185,18 +185,18 @@ Anda akan melihat **progress logging setiap 5%** (contoh output):
 [BACKTEST] SELESAI 100% dalam 36s. 312 trade(s) tercatat.
 ```
 
-Setelah selesai → **report hasil backtest** akan ada di `reports/backtest_<YYYYMMDD_HHMMSS>/`:
-- `summary.json` — semua metrics (win rate, profit factor, max drawdown, expectancy, total return, dll)
-- `trades.csv` — log semua trade: entry_time, direction, entry_price, sl, tp, close_time, close_price, pnl, pips
-- `equity_curve.csv` — bar timestamp vs equity
+After completion, the **backtest report** is written to `reports/backtest_<YYYYMMDD_HHMMSS>/`:
+- `summary.json` — metrics (win rate, profit factor, max drawdown, expectancy, total return, etc.)
+- `trades.csv` — full trade log (entry_time, direction, entry_price, sl, tp, close_time, close_price, pnl, etc.)
+- `equity_curve.csv` — timestamp vs equity/balance
 
 ---
 
-### 4) Live Mode (⚠️ SELALU GUNAKAN DEMO ACCOUNT DULU!)
+### 4) Live Mode (⚠️ ALWAYS START WITH A DEMO ACCOUNT)
 
 ```env
 MODE=LIVE
-BACKTEST_USE_MT5=true          # Tidak dipakai di mode LIVE
+BACKTEST_USE_MT5=true          # Not used in LIVE mode
 MT5_LOGIN=463721066
 MT5_PASSWORD=YourDemoPassword123
 MT5_SERVER=Exness-MT5Trial17
@@ -204,17 +204,17 @@ MT5_SERVER=Exness-MT5Trial17
 LIVE_POLL_INTERVAL_SECONDS=5
 ```
 
-> **⚠️ PERINGATAN KEAMANAN — BACA SEBELUM MODE LIVE:**
-> 1. Mode LIVE default **DRY-RUN** (jika flag `LIVE_SEND_REAL_ORDERS` tidak di-set ke `true`) — tidak pernah kirim order real kecuali Anda SET SECARA EKSPLISIT.
-> 2. **JANGAN PERNAH** gunakan account funded REAL sebelum perilaku bot divalidasi berhari-hari / berminggu-minggu di **DEMO**.
-> 3. `.env` berisi `MT5_LOGIN` + `MT5_PASSWORD` — file ini **SUDAH DI-IGNORE oleh .gitignore**, JANGAN pernah di-commit / dishare.
+> **⚠️ SECURITY WARNING — READ BEFORE LIVE MODE:**
+> 1. LIVE mode **sends orders** to the connected MT5 account. Always assume real execution.
+> 2. **NEVER** use a real funded account before validating behavior for days/weeks on a **DEMO** account.
+> 3. `.env` contains `MT5_LOGIN` + `MT5_PASSWORD` — it is ignored by `.gitignore`. Never commit or share it.
 
 ---
 
-## 🧪 Jalankan Test Suite
+## 🧪 Run the Test Suite
 
 ```bash
-# Semua test:
+# All tests:
 python -m pytest tests/ -v
 
 # Hasil expected:
@@ -223,11 +223,11 @@ python -m pytest tests/ -v
 
 ---
 
-## ⚙️ Environment Variables — Highlight (Ringkas)
+## ⚙️ Environment Variables — Highlights
 
-Daftar LENGKAP ada di [contexts/SCHEMA.md](file:///home/syawal/Project/EA-MA510/contexts/SCHEMA.md). Yang paling sering di-tune:
+The full list is in [contexts/SCHEMA.md](contexts/SCHEMA.md). Commonly tuned vars:
 
-| Env | Values | Penting |
+| Env | Values | Important |
 |---|---|---|
 | `MODE` | `BACKTEST` / `LIVE` | ✅ |
 | `SYMBOL` | e.g. `XAUUSDm` (check broker-specific suffix!) | ✅ |
@@ -237,57 +237,57 @@ Daftar LENGKAP ada di [contexts/SCHEMA.md](file:///home/syawal/Project/EA-MA510/
 | `BACKTEST_USE_MT5` | `false`=synthetic, `true`=coba MT5 history (Windows only) | |
 | `SIZING_MODE` | `FIXED_LOT` / `RISK_PERCENT` | ✅ |
 | `SL_MODE` / `TP_MODE` | `FIXED` / `ATR` / **`DOLLAR`** | ✅ |
-| `SL_DOLLAR` / `TP_DOLLAR` | `5.0` / `15.0` → risiko $5, target $15 PER POSISI | Jika SL_MODE=DOLLAR |
+| `SL_DOLLAR` / `TP_DOLLAR` | `5.0` / `15.0` → $5 risk, $15 target per position | If SL_MODE=DOLLAR |
 | `MAX_CONCURRENT_POSITIONS` | `1` default | |
 | `LOG_LEVEL` / `LOG_DIR` / `REPORT_DIR` | `INFO` / `./logs` / `./reports` | |
 
 ---
 
-## 🧭 Spec Documents (Jangan Sentuh Strategy Sebelum Baca Ini!)
+## 🧭 Spec Documents (Read Before Changing Strategy)
 
-Semua file ada di folder `contexts/` → **jika ada pertentangan antara code × RULES.md/SCHEMA.md → DOKUMEN INI YANG MENANG.**
+All files live in `contexts/`. If code disagrees with RULES.md/SCHEMA.md, **the documents win**.
 
 | File | Isi |
 |---|---|
-| [contexts/PRD.md](file:///home/syawal/Project/EA-MA510/contexts/PRD.md) | Product Requirement: goals, scope, FR/NFR. |
-| [contexts/RULES.md](file:///home/syawal/Project/EA-MA510/contexts/RULES.md) | 🚨 **Strategi Trading** — entry BUY/SELL, exit, filter trend. |
-| [contexts/ARCHITECTURE.md](file:///home/syawal/Project/EA-MA510/contexts/ARCHITECTURE.md) | Module boundaries, mana logic taro di mana, data flow. |
-| [contexts/DESIGN.md](file:///home/syawal/Project/EA-MA510/contexts/DESIGN.md) | Function signatures, pseudo-code, algoritma konkret. |
-| [contexts/SCHEMA.md](file:///home/syawal/Project/EA-MA510/contexts/SCHEMA.md) | 🚨 **Environment Variables LENGKAP** (nama, type, required, default, validation). |
-| [AGENTS.md](file:///home/syawal/Project/EA-MA510/AGENTS.md) | Instruksi build order + ground rules untuk AI agent / developer. |
+| [contexts/PRD.md](contexts/PRD.md) | Product requirements: goals, scope, FR/NFR. |
+| [contexts/RULES.md](contexts/RULES.md) | 🚨 Trading strategy source of truth: BUY/SELL entry, exits, filters. |
+| [contexts/ARCHITECTURE.md](contexts/ARCHITECTURE.md) | Module boundaries and data flow. |
+| [contexts/DESIGN.md](contexts/DESIGN.md) | Function signatures, pseudo-code, concrete algorithms. |
+| [contexts/SCHEMA.md](contexts/SCHEMA.md) | 🚨 Full environment variable reference (name, type, required, defaults, validation). |
+| [AGENTS.md](AGENTS.md) | Build order + ground rules for contributors. |
 
 ---
 
 ## 🛠️ Troubleshooting
 
-| Gejala | Penyebab + Solusi |
+| Symptom | Cause + Fix |
 |---|---|
-| **Config error: `BACKTEST_USE_MT5=true` di non-Windows / MetaTrader5 tidak terinstall** | `MetaTrader5` package itu **Windows-only**. Solusi: jalankan di Windows + install `MetaTrader5`, atau set `BACKTEST_USE_MT5=false` untuk mode synthetic. |
-| `pip install MetaTrader5` FAIL di Linux / Mac | **Sudah diantisipasi**. PyPI package MetaTrader5 **hanya support Windows (butuh MT5 Terminal.exe)**. Backtest synthetic mode berjalan TANPA package ini (skip install). Data historis riil → gunakan Windows / VPS Windows. |
-| **ConfigError: XX wajib diisi** | Cek ENV Anda sesuai SCHEMA.md. Jika SL_MODE=DOLLAR → `SL_DOLLAR` harus diisi dan >0. Jika RISK_PERCENT → `RISK_PERCENT_PER_TRADE` (0-100). |
-| Backtest tidak menghasilkan trade sama sekali (0 trade) | 1) Trend filter ketat: kedua trend TF TIDAK PERNAH searah MA cross. Coba ganti parameter MA atau gunakan synthetic (pasti menghasilkan cross). 2) Spread terlalu tinggi (MAX_SPREAD_POINTS terlalu kecil). |
-| `.env` (password MT5) terlanjur ter-add di git | JANGAN commit! Jalankan `git rm --cached -r .env` lalu cek `git status` — file harus hilang dari staged. |
+| **Config error: `BACKTEST_USE_MT5=true` on non-Windows / MetaTrader5 not installed** | The `MetaTrader5` PyPI package is **Windows-only**. Fix: run on Windows and install `MetaTrader5`, or set `BACKTEST_USE_MT5=false` for synthetic mode. |
+| `pip install MetaTrader5` fails on Linux/macOS | Expected: MetaTrader5 is **Windows-only** (requires MT5 Terminal.exe). Synthetic backtests do not require it. For real MT5 history, use Windows/VPS Windows. |
+| **ConfigError: XX is required** | Check your `.env` against SCHEMA.md. If `SL_MODE=DOLLAR` → `SL_DOLLAR` is required and >0. If `SIZING_MODE=RISK_PERCENT` → `RISK_PERCENT_PER_TRADE` (0-100]. |
+| Backtest produces 0 trades | 1) Strict filters: trend TFs never align with MA cross. Try different MA params or use synthetic data. 2) Spread guard too strict (MAX_SPREAD_POINTS too small). |
+| `.env` accidentally added to git | Do not commit. Run `git rm --cached -r .env` and verify `git status` shows it is no longer staged. |
 
 ---
 
-## 🧱 Build Order (Jika Anda Mau Menambah Fitur)
+## 🧱 Build Order (If You Want to Add Features)
 
-Lihat [AGENTS.md](file:///home/syawal/Project/EA-MA510/AGENTS.md) §3 untuk urutan layer. Singkatnya:
+See [AGENTS.md](AGENTS.md) §3 for the full layering. In short:
 
-1. **Config** (validasi ENV) — selesaikan dulu sebelum layer lain.
-2. **Data feed + indicators** — verified output dengan fixture.
+1. **Config** (ENV validation) — finish this before other layers.
+2. **Data feed + indicators** — verify outputs with fixtures.
 3. **Strategy** — pure + fully unit tested.
 4. **Risk manager** — sizing/SL/TP math.
-5. **Order executor** — BacktestExecutor dulu (0 risiko), baru Live.
+5. **Order executor** — BacktestExecutor first (0 risk), then Live.
 6. **Backtest engine → reporting → live engine → main.py dispatch**.
 
-> 💡 **Ground Rule Kritis (from AGENTS.md):**
-> - `strategy.py` TETAP PURE: NO MT5 calls, NO file I/O, NO `datetime.now()` di dalamnya.
-> - NO look-ahead di backtest: selalu gunakan `slice_up_to_time()`.
-> - NEVER open position tanpa SL valid (skip trade, bukan nebak-nebak).
+> **Critical ground rules (from AGENTS.md):**
+> - `strategy.py` stays pure: no MT5 calls, no file I/O, no `datetime.now()`.
+> - No look-ahead in backtests: always use `slice_up_to_time()`.
+> - Never open a position without a valid SL (skip the trade; do not guess).
 
 ---
 
 ## ⚖️ License
 
-For personal / internal trading use. Strategy rules are transparent and auditable from `contexts/RULES.md`. Live trading involves substantial risk of loss — **pastikan Anda memahami strategi dan risiko sebelum funding real account.**
+For personal / internal trading use. Strategy rules are transparent and auditable from `contexts/RULES.md`. Live trading involves substantial risk of loss — **make sure you fully understand the strategy and risks before funding a real account.**

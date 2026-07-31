@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 
 from src.config import Config
-from src.indicators import moving_average, detect_cross, CrossState
+from src.indicators import moving_average, detect_cross, trend_direction, CrossState
 from src.strategy import Signal, evaluate_signal
 
 
@@ -29,8 +29,13 @@ def make_buy_cfg():
         ma_low=5,
         ma_high=10,
         ma_type="EMA",
+        trend_ma_low_1=None,
+        trend_ma_high_1=None,
+        trend_ma_low_2=None,
+        trend_ma_high_2=None,
         backtest_start_date=date(2025, 1, 1),
         backtest_end_date=date(2025, 1, 2),
+        backtest_warmup_days=0,
         backtest_initial_balance=1000,
         backtest_spread_points=0,
         backtest_slippage_points=0,
@@ -58,6 +63,7 @@ def make_buy_cfg():
         trading_window_end=None,
         magic_number=1,
         live_poll_interval_seconds=5,
+        live_warmup_days=0,
         mt5_login=None,
         mt5_password=None,
         mt5_server=None,
@@ -217,6 +223,81 @@ def test_no_cross_ma_low_always_above():
     }
     sig = evaluate_signal(candles, cfg)
     assert sig.direction == "NONE"
+
+
+def test_buy_signal_entry_trend_ma_enabled_allows():
+    cfg = make_buy_cfg()
+    object.__setattr__(cfg, "trend_ma_low_1", 3)
+    object.__setattr__(cfg, "trend_ma_high_1", 8)
+
+    entry_df = _build_entry_cross_up()
+    tf1_df = _make_bullish_tf_df(20)
+    tf2_df = _make_bullish_tf_df(20)
+
+    tma1_low = moving_average(entry_df.close, cfg.trend_ma_low_1, cfg.ma_type)
+    tma1_high = moving_average(entry_df.close, cfg.trend_ma_high_1, cfg.ma_type)
+    assert trend_direction(tma1_low, tma1_high) == "BULLISH"
+
+    candles = {
+        cfg.entry_timeframe: entry_df,
+        cfg.trend_timeframe_1: tf1_df,
+        cfg.trend_timeframe_2: tf2_df,
+    }
+    sig = evaluate_signal(candles, cfg)
+    assert sig.direction == "BUY", f"Expected BUY, got {sig.direction} reason={sig.reason}"
+    assert "entry_trend_1=BULLISH" in sig.reason
+    assert "entry_trend_2" not in sig.reason
+
+
+def test_buy_cross_up_but_entry_trend_ma_blocks():
+    cfg = make_buy_cfg()
+    object.__setattr__(cfg, "trend_ma_low_1", 3)
+    object.__setattr__(cfg, "trend_ma_high_1", 8)
+    object.__setattr__(cfg, "trend_ma_low_2", 4)
+    object.__setattr__(cfg, "trend_ma_high_2", 18)
+
+    entry_df = _build_entry_cross_up()
+    tf1_df = _make_bullish_tf_df(20)
+    tf2_df = _make_bullish_tf_df(20)
+
+    tma2_low = moving_average(entry_df.close, cfg.trend_ma_low_2, cfg.ma_type)
+    tma2_high = moving_average(entry_df.close, cfg.trend_ma_high_2, cfg.ma_type)
+    assert trend_direction(tma2_low, tma2_high) != "BULLISH"
+
+    candles = {
+        cfg.entry_timeframe: entry_df,
+        cfg.trend_timeframe_1: tf1_df,
+        cfg.trend_timeframe_2: tf2_df,
+    }
+    sig = evaluate_signal(candles, cfg)
+    assert sig.direction == "NONE"
+    assert "entry_trend_1=" in sig.reason
+    assert "entry_trend_2=" in sig.reason
+
+
+def test_buy_signal_entry_trend_ma_pair_2_only_allows():
+    cfg = make_buy_cfg()
+    object.__setattr__(cfg, "trend_ma_low_2", 5)
+    object.__setattr__(cfg, "trend_ma_high_2", 13)
+
+    entry_df = _build_entry_cross_up()
+    tf1_df = _make_bullish_tf_df(20)
+    tf2_df = _make_bullish_tf_df(20)
+
+    tma2_low = moving_average(entry_df.close, cfg.trend_ma_low_2, cfg.ma_type)
+    tma2_high = moving_average(entry_df.close, cfg.trend_ma_high_2, cfg.ma_type)
+    assert trend_direction(tma2_low, tma2_high) == "BULLISH"
+
+    candles = {
+        cfg.entry_timeframe: entry_df,
+        cfg.trend_timeframe_1: tf1_df,
+        cfg.trend_timeframe_2: tf2_df,
+    }
+    sig = evaluate_signal(candles, cfg)
+    assert sig.direction == "BUY"
+    assert "entry_trend_1" not in sig.reason
+    assert "entry_trend_2=BULLISH" in sig.reason
+
 
 
 def test_module_pure_imports():

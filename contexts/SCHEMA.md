@@ -25,16 +25,29 @@
 | `MA_HIGH` | int | yes | — | Must be `> MA_LOW`. |
 | `MA_TYPE` | `SMA` \| `EMA` | no | `EMA` | |
 
+### 1.3.1 Entry Trend MA Filter (optional, entry timeframe only)
+
+When enabled, BUY/SELL signals on `ENTRY_TIMEFRAME` are only valid if one or more additional MA trend
+pairs on `ENTRY_TIMEFRAME` also align with the entry direction. MA type follows `MA_TYPE`.
+
+| Var | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `TREND_MA_LOW_1` | int | optional | none | Pair 1. If set, `TREND_MA_HIGH_1` must also be set. Must be `> 0` and `< TREND_MA_HIGH_1`. |
+| `TREND_MA_HIGH_1` | int | optional | none | Pair 1. If set, `TREND_MA_LOW_1` must also be set. Must be `> 0` and `> TREND_MA_LOW_1`. |
+| `TREND_MA_LOW_2` | int | optional | none | Pair 2. If set, `TREND_MA_HIGH_2` must also be set. Must be `> 0` and `< TREND_MA_HIGH_2`. |
+| `TREND_MA_HIGH_2` | int | optional | none | Pair 2. If set, `TREND_MA_LOW_2` must also be set. Must be `> 0` and `> TREND_MA_LOW_2`. |
+
 ### 1.4 Backtest Range
 
 | Var | Type | Required | Default | Notes |
 |---|---|---|---|---|
 | `BACKTEST_START_DATE` | `YYYY-MM-DD` | required if `MODE=BACKTEST` | — | |
 | `BACKTEST_END_DATE` | `YYYY-MM-DD` | required if `MODE=BACKTEST` | — | Must be after start date. |
-| `BACKTEST_INITIAL_BALANCE` | float | no | `1000` | Starting virtual balance for equity curve/sizing. |
+| `BACKTEST_WARMUP_DAYS` | int | no | `0` | Extra days fetched before `BACKTEST_START_DATE` to warm up indicators (MA/ATR). Trading still starts at `BACKTEST_START_DATE`. |
+| `BACKTEST_INITIAL_BALANCE` | float | no | `1000` | Starting virtual balance for equity curve/sizing. Must be `> 0`. |
 | `BACKTEST_SPREAD_POINTS` | float | no | `0` (use live spread if available) | Simulated spread applied to fills. |
 | `BACKTEST_SLIPPAGE_POINTS` | float | no | `0` | Simulated slippage applied to fills. |
-| `BACKTEST_USE_MT5` | bool | no | Windows: `true`, non-Windows: `false` | Jika `true`, tarik data historis dari MT5 terminal. Jika `false`, pakai data synthetic. |
+| `BACKTEST_USE_MT5` | bool | no | Windows: `true`, non-Windows: `false` | If `true`, fetch real historical data from an MT5 terminal. If `false`, use synthetic data. |
 
 ### 1.5 Position Sizing
 
@@ -51,11 +64,11 @@
 | `SL_MODE` | `FIXED` \| `ATR` \| `DOLLAR` | no | `FIXED` | |
 | `SL_POINTS` | float | required if `SL_MODE=FIXED` | — | In broker points. |
 | `SL_ATR_MULTIPLIER` | float | required if `SL_MODE=ATR` | — | |
-| `SL_DOLLAR` | float | required if `SL_MODE=DOLLAR` | — | Nilai dollar absolut per posisi (bukan per lot). Nilai > 0. |
+| `SL_DOLLAR` | float | required if `SL_MODE=DOLLAR` | — | Absolute dollar amount per position (not per lot). Must be > 0. |
 | `TP_MODE` | `FIXED` \| `ATR` \| `DOLLAR` | no | `FIXED` | |
 | `TP_POINTS` | float | required if `TP_MODE=FIXED` | — | |
 | `TP_ATR_MULTIPLIER` | float | required if `TP_MODE=ATR` | — | |
-| `TP_DOLLAR` | float | required if `TP_MODE=DOLLAR` | — | Nilai dollar absolut per posisi (bukan per lot). Nilai > 0. |
+| `TP_DOLLAR` | float | required if `TP_MODE=DOLLAR` | — | Absolute dollar amount per position (not per lot). Must be > 0. |
 | `ATR_PERIOD` | int | no | `14` | Used when either SL or TP mode is `ATR`. |
 
 ### 1.7 Trailing Stop (optional)
@@ -71,8 +84,8 @@
 | Var | Type | Required | Default | Notes |
 |---|---|---|---|---|
 | `EXIT_ON_OPPOSITE_SIGNAL` | bool | no | `false` | |
-| `TRADING_WINDOW_START` | `HH:MM` | no | none (disabled) | Jam mulai boleh entry, mengikuti `DISPLAY_TIMEZONE`. |
-| `TRADING_WINDOW_END` | `HH:MM` | no | none (disabled) | Jam selesai boleh entry, mengikuti `DISPLAY_TIMEZONE`. Support lintas hari jika START > END. |
+| `TRADING_WINDOW_START` | `HH:MM` | no | none (disabled) | Entry window start time, interpreted in `DISPLAY_TIMEZONE`. |
+| `TRADING_WINDOW_END` | `HH:MM` | no | none (disabled) | Entry window end time, interpreted in `DISPLAY_TIMEZONE`. Supports crossing midnight when START > END. |
 | `MAX_CONCURRENT_POSITIONS` | int | no | `1` | Per direction or total — implementation must document which; recommended: total open positions for `SYMBOL` opened by this bot's `MAGIC_NUMBER`. |
 | `MAX_SPREAD_POINTS` | float | no | none (no guard) | Live mode entry guard. |
 | `MAX_DAILY_LOSS_PERCENT` | float | no | none (no breaker) | Live mode circuit breaker. |
@@ -83,6 +96,7 @@
 | Var | Type | Required | Default | Notes |
 |---|---|---|---|---|
 | `LIVE_POLL_INTERVAL_SECONDS` | int | no | `5` | |
+| `LIVE_WARMUP_DAYS` | int | no | `0` | If > 0, LIVE fetches candles using a day-based lookback (per timeframe) to warm up indicators after startup. |
 | `MT5_LOGIN` | int | no (if terminal already logged in) | — | |
 | `MT5_PASSWORD` | string | no | — | Never logged, never committed. |
 | `MT5_SERVER` | string | no | — | |
@@ -95,7 +109,7 @@
 | `LOG_LEVEL` | `DEBUG`\|`INFO`\|`WARNING`\|`ERROR` | no | `INFO` | |
 | `LOG_DIR` | string | no | `./logs` | |
 | `REPORT_DIR` | string | no | `./reports` | Backtest output location. |
-| `DISPLAY_TIMEZONE` | string | no | `UTC` | IANA timezone name untuk display di report/log. Contoh: `UTC`, `Asia/Jakarta`. |
+| `DISPLAY_TIMEZONE` | string | no | `UTC` | IANA timezone name for report/log display. Examples: `UTC`, `Asia/Jakarta`. |
 
 ### 1.11 Example `.env`
 
@@ -172,11 +186,13 @@ never hardcode the MT5 integer constant elsewhere.
 ## 3. Config Validation Rules (summary — see DESIGN.md §1 for the loader algorithm)
 
 - `MA_LOW < MA_HIGH`, both `> 0`.
+- `TREND_MA` pairs are optional. If any value within a pair is set, the other value in the pair must also be set; each must be `> 0` and `low < high`.
 - `ENTRY_TIMEFRAME`, `TREND_TIMEFRAME_1`, `TREND_TIMEFRAME_2` ∈ the enum in §2.
 - If `MODE=BACKTEST`: `BACKTEST_START_DATE < BACKTEST_END_DATE`, both valid dates.
+- If `MODE=BACKTEST`: `BACKTEST_INITIAL_BALANCE > 0`.
 - Sizing/SL/TP conditional-required fields per §1.5–1.6.
-- Jika `SL_MODE=DOLLAR` maka `SL_DOLLAR` wajib ada dan `> 0`.
-- Jika `TP_MODE=DOLLAR` maka `TP_DOLLAR` wajib ada dan `> 0`.
+- If `SL_MODE=DOLLAR` then `SL_DOLLAR` is required and must be `> 0`.
+- If `TP_MODE=DOLLAR` then `TP_DOLLAR` is required and must be `> 0`.
 - If `TRAILING_STOP_ENABLED=true`: both trailing fields required.
 - `MAX_CONCURRENT_POSITIONS >= 1`.
 
@@ -208,11 +224,11 @@ CSV/DB table `trades`:
 | `trade_id` | int | Auto-increment. |
 | `symbol` | string | |
 | `direction` | `BUY`\|`SELL` | |
-| `open_time` | datetime | Di `trades.csv`, nilai ini ditulis dalam `DISPLAY_TIMEZONE`. |
-| `open_time_hm` | string | Format `HH:MM` mengikuti `DISPLAY_TIMEZONE`. |
+| `open_time` | datetime | In `trades.csv`, this value is written in `DISPLAY_TIMEZONE`. |
+| `open_time_hm` | string | `HH:MM` formatted time in `DISPLAY_TIMEZONE`. |
 | `open_price` | float | |
-| `close_time` | datetime | nullable while open. Di `trades.csv`, nilai ini ditulis dalam `DISPLAY_TIMEZONE`. |
-| `close_time_hm` | string | Format `HH:MM` mengikuti `DISPLAY_TIMEZONE`. |
+| `close_time` | datetime | nullable while open. In `trades.csv`, this value is written in `DISPLAY_TIMEZONE`. |
+| `close_time_hm` | string | `HH:MM` formatted time in `DISPLAY_TIMEZONE`. |
 | `close_price` | float | nullable while open. |
 | `lot_size` | float | |
 | `sl_price` | float | |

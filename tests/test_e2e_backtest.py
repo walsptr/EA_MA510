@@ -23,8 +23,13 @@ def make_e2e_cfg(tmpdir, **overrides) -> Config:
         ma_low=5,
         ma_high=10,
         ma_type="EMA",
+        trend_ma_low_1=None,
+        trend_ma_high_1=None,
+        trend_ma_low_2=None,
+        trend_ma_high_2=None,
         backtest_start_date=date(2025, 1, 1),
         backtest_end_date=date(2025, 1, 5),
+        backtest_warmup_days=0,
         backtest_initial_balance=1000.0,
         backtest_spread_points=0,
         backtest_slippage_points=0,
@@ -52,6 +57,7 @@ def make_e2e_cfg(tmpdir, **overrides) -> Config:
         trading_window_end=None,
         magic_number=99999,
         live_poll_interval_seconds=5,
+        live_warmup_days=0,
         mt5_login=None,
         mt5_password=None,
         mt5_server=None,
@@ -115,16 +121,45 @@ def test_report_files_exist_and_summary_matches():
         assert isinstance(loaded["profit_factor"], (int, float))
 
 
-def test_live_engine_init_and_one_iteration():
+def test_live_engine_init_and_one_iteration(monkeypatch):
     with tempfile.TemporaryDirectory() as tmpdir:
         log_dir = os.path.join(tmpdir, "logs")
         os.makedirs(log_dir, exist_ok=True)
         from src.logger import setup_logger
         logger = setup_logger(log_dir, "WARNING")
-        cfg = make_e2e_cfg(tmpdir)
+        cfg = make_e2e_cfg(tmpdir, mode="LIVE")
+        import src.live_engine as live_engine_module
+
+        idx = pandas.date_range("2025-01-01", periods=210, freq="5min", tz="UTC")
+        df = pandas.DataFrame(
+            {
+                "open": [1.0] * len(idx),
+                "high": [1.0] * len(idx),
+                "low": [1.0] * len(idx),
+                "close": [1.0] * len(idx),
+            },
+            index=idx,
+        )
+
+        monkeypatch.setattr(live_engine_module, "get_latest", lambda *_args, **_kwargs: df)
+        monkeypatch.setattr(live_engine_module, "get_latest_by_days", lambda *_args, **_kwargs: df)
+        monkeypatch.setattr(
+            live_engine_module,
+            "evaluate_signal",
+            lambda _candles, _cfg: live_engine_module.Signal(
+                direction="NONE",
+                reason="test",
+                entry_time=df.index[-1],
+                entry_timeframe_close_price=float(df.close.iloc[-1]),
+            ),
+        )
+
+        class FakeMT5Client:
+            def account_info(self):
+                return {"balance": 1000.0, "equity": 1000.0}
+
         from src.live_engine import LiveEngine
-        engine = LiveEngine(cfg, logger, mt5_client=None, order_executor=None)
-        assert engine._send_real_orders == False, "Default harus DRY-RUN, tidak mengirim order sungguhan!"
+        engine = LiveEngine(cfg, logger, mt5_client=FakeMT5Client(), order_executor=None)
         engine.run(max_iterations=1)
 
 

@@ -20,7 +20,9 @@ def make_minimal_cfg(initial_balance=1000.0):
         symbol="XAUUSDm",
         entry_timeframe="M5", trend_timeframe_1="M15", trend_timeframe_2="M30",
         ma_low=5, ma_high=10, ma_type="EMA",
+        trend_ma_low_1=None, trend_ma_high_1=None, trend_ma_low_2=None, trend_ma_high_2=None,
         backtest_start_date=date(2025, 1, 1), backtest_end_date=date(2025, 1, 2),
+        backtest_warmup_days=0,
         backtest_initial_balance=initial_balance,
         backtest_spread_points=0, backtest_slippage_points=0, backtest_use_mt5=False,
         sizing_mode="FIXED_LOT", fixed_lot_size=0.1, risk_percent_per_trade=None,
@@ -32,6 +34,7 @@ def make_minimal_cfg(initial_balance=1000.0):
         max_spread_points=None, max_daily_loss_percent=None,
         trading_window_start=None, trading_window_end=None,
         magic_number=1, live_poll_interval_seconds=5,
+        live_warmup_days=0,
         mt5_login=None, mt5_password=None, mt5_server=None, mt5_terminal_path=None,
         log_level="INFO", log_dir="./logs", report_dir="./reports", display_timezone="UTC",
     )

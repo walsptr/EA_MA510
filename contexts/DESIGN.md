@@ -22,6 +22,12 @@ class Config:
     ma_high: int
     ma_type: Literal["SMA", "EMA"]
 
+    # Entry trend MA filter (optional, entry timeframe only)
+    trend_ma_low_1: int | None
+    trend_ma_high_1: int | None
+    trend_ma_low_2: int | None
+    trend_ma_high_2: int | None
+
     # Backtest range
     backtest_start_date: date | None   # required if mode == BACKTEST
     backtest_end_date: date | None
@@ -71,12 +77,12 @@ class Config:
    - if `sizing_mode == RISK_PERCENT`: `risk_percent_per_trade` present and in `(0, 100]`.
    - if `sizing_mode == FIXED_LOT`: `fixed_lot_size` present and `> 0`.
    - SL/TP mode-specific required fields present depending on mode:
-     - Jika `SL_MODE=FIXED`: `sl_points` wajib ada dan > 0.
-     - Jika `SL_MODE=ATR`: `sl_atr_multiplier` wajib ada dan > 0.
-     - Jika `SL_MODE=DOLLAR`: `sl_dollar` wajib ada dan > 0.
-     - Jika `TP_MODE=FIXED`: `tp_points` wajib ada dan > 0.
-     - Jika `TP_MODE=ATR`: `tp_atr_multiplier` wajib ada dan > 0.
-     - Jika `TP_MODE=DOLLAR`: `tp_dollar` wajib ada dan > 0.
+     - If `SL_MODE=FIXED`: `sl_points` is required and must be > 0.
+     - If `SL_MODE=ATR`: `sl_atr_multiplier` is required and must be > 0.
+     - If `SL_MODE=DOLLAR`: `sl_dollar` is required and must be > 0.
+     - If `TP_MODE=FIXED`: `tp_points` is required and must be > 0.
+     - If `TP_MODE=ATR`: `tp_atr_multiplier` is required and must be > 0.
+     - If `TP_MODE=DOLLAR`: `tp_dollar` is required and must be > 0.
 4. Return the frozen `Config`.
 
 ## 2. Indicators (`indicators.py`)
@@ -154,6 +160,18 @@ def evaluate_signal(candles: dict[str, pd.DataFrame], cfg: Config) -> Signal:
     entry_ma_high = moving_average(entry_df.close, cfg.ma_high, cfg.ma_type)
     cross = detect_cross(entry_ma_low, entry_ma_high)
 
+    entry_trend_1 = None
+    entry_trend_2 = None
+    if cfg.trend_ma_low_1 and cfg.trend_ma_high_1 and cfg.trend_ma_low_2 and cfg.trend_ma_high_2:
+        entry_trend_1 = trend_direction(
+            moving_average(entry_df.close, cfg.trend_ma_low_1, cfg.ma_type),
+            moving_average(entry_df.close, cfg.trend_ma_high_1, cfg.ma_type),
+        )
+        entry_trend_2 = trend_direction(
+            moving_average(entry_df.close, cfg.trend_ma_low_2, cfg.ma_type),
+            moving_average(entry_df.close, cfg.trend_ma_high_2, cfg.ma_type),
+        )
+
     t1_trend = trend_direction(
         moving_average(t1_df.close, cfg.ma_low, cfg.ma_type),
         moving_average(t1_df.close, cfg.ma_high, cfg.ma_type),
@@ -166,9 +184,13 @@ def evaluate_signal(candles: dict[str, pd.DataFrame], cfg: Config) -> Signal:
     last = entry_df.iloc[-1]
 
     if cross == CrossState.CROSS_UP and t1_trend == "BULLISH" and t2_trend == "BULLISH":
+        if entry_trend_1 and entry_trend_2 and not (entry_trend_1 == "BULLISH" and entry_trend_2 == "BULLISH"):
+            return Signal("NONE", "entry trend MA gate blocked", last.time, last.close)
         return Signal("BUY", "cross_up + both trend timeframes bullish", last.time, last.close)
 
     if cross == CrossState.CROSS_DOWN and t1_trend == "BEARISH" and t2_trend == "BEARISH":
+        if entry_trend_1 and entry_trend_2 and not (entry_trend_1 == "BEARISH" and entry_trend_2 == "BEARISH"):
+            return Signal("NONE", "entry trend MA gate blocked", last.time, last.close)
         return Signal("SELL", "cross_down + both trend timeframes bearish", last.time, last.close)
 
     return Signal("NONE", f"no aligned signal (cross={cross.value}, t1={t1_trend}, t2={t2_trend})", last.time, last.close)
@@ -190,14 +212,14 @@ def compute_trade_plan(signal: Signal, cfg: Config, symbol_info: SymbolInfo,
     point = symbol_info.point
     entry_price = signal.entry_timeframe_close_price
 
-    # --- Hitung sl_distance (3 mode: ATR / FIXED / DOLLAR) ---
+    # --- Compute sl_distance (3 modes: ATR / FIXED / DOLLAR) ---
     if cfg.sl_mode == "ATR":
         sl_distance = cfg.sl_atr_multiplier * atr_value
     elif cfg.sl_mode == "FIXED":
         sl_distance = cfg.sl_points * point
     elif cfg.sl_mode == "DOLLAR":
-        # Perlu tahu lot size dulu. Untuk FIXED_LOT: pakai cfg.fixed_lot_size langsung.
-        # Untuk RISK_PERCENT: anggap SL_DOLLAR sebagai fixed risk amount, hitung lot agar total risk = SL_DOLLAR.
+        # We need the lot size first. For FIXED_LOT: use cfg.fixed_lot_size directly.
+        # For RISK_PERCENT: treat SL_DOLLAR as a fixed risk amount, compute lot so total risk = SL_DOLLAR.
         # value_per_point_per_lot = symbol_info.trade_tick_value / symbol_info.trade_tick_size * point
         # sl_distance_in_points = sl_dollar / (preliminary_lot * value_per_point_per_lot)
         # sl_distance = sl_distance_in_points * point
@@ -205,25 +227,25 @@ def compute_trade_plan(signal: Signal, cfg: Config, symbol_info: SymbolInfo,
         if cfg.sizing_mode == "FIXED_LOT":
             preliminary_lot = cfg.fixed_lot_size
         else:
-            # RISK_PERCENT + SL_DOLLAR: SL_DOLLAR adalah fixed risk amount,
-            # jadikan preliminary_lot dengan target risk = sl_dollar pada 1 point SL,
-            # lalu gunakan untuk menghitung sl_distance_in_points (two-pass approximation).
+            # RISK_PERCENT + SL_DOLLAR: SL_DOLLAR is a fixed risk amount.
+            # Use a preliminary_lot targeting risk=sl_dollar at 1 point SL, then
+            # use it to compute sl_distance_in_points (two-pass approximation).
             preliminary_lot = cfg.sl_dollar / value_per_point_per_lot
         sl_distance_in_points = cfg.sl_dollar / (preliminary_lot * value_per_point_per_lot)
         sl_distance = sl_distance_in_points * point
 
-    # --- Hitung tp_distance (3 mode: ATR / FIXED / DOLLAR) ---
+    # --- Compute tp_distance (3 modes: ATR / FIXED / DOLLAR) ---
     if cfg.tp_mode == "ATR":
         tp_distance = cfg.tp_atr_multiplier * atr_value
     elif cfg.tp_mode == "FIXED":
         tp_distance = cfg.tp_points * point
     elif cfg.tp_mode == "DOLLAR":
-        # (lakukan hal sama untuk tp_distance dengan tp_dollar)
+        # (do the same for tp_distance with tp_dollar)
         value_per_point_per_lot = symbol_info.trade_tick_value / symbol_info.trade_tick_size * point
         if cfg.sizing_mode == "FIXED_LOT":
             preliminary_lot = cfg.fixed_lot_size
         else:
-            # RISK_PERCENT + TP_DOLLAR: pakai target tp_dollar sebagai basis preliminary_lot
+            # RISK_PERCENT + TP_DOLLAR: use tp_dollar as the basis for preliminary_lot
             preliminary_lot = cfg.tp_dollar / value_per_point_per_lot
         tp_distance_in_points = cfg.tp_dollar / (preliminary_lot * value_per_point_per_lot)
         tp_distance = tp_distance_in_points * point
@@ -238,8 +260,8 @@ def compute_trade_plan(signal: Signal, cfg: Config, symbol_info: SymbolInfo,
     if cfg.sizing_mode == "FIXED_LOT":
         lot = cfg.fixed_lot_size
     else:
-        # RISK_PERCENT: jika SL_MODE=DOLLAR maka sl_dollar adalah fixed risk amount,
-        # jika tidak, gunakan persentase dari equity seperti biasa.
+        # RISK_PERCENT: if SL_MODE=DOLLAR then sl_dollar is a fixed risk amount;
+        # otherwise use a percentage of equity as usual.
         if cfg.sl_mode == "DOLLAR":
             risk_amount = cfg.sl_dollar
         else:
@@ -292,6 +314,9 @@ for i, bar in enumerate(history[entry_timeframe]):
     executor.update_trailing_stops(bar.close)
     executor.check_sl_tp_hits(bar)   # may close open positions this bar
 
+    if executor.balance <= 0:
+        break
+
     signal = strategy.evaluate_signal({entry_tf: entry_slice, trend_tf_1: t1_slice, trend_tf_2: t2_slice}, cfg)
 
     if signal.direction != "NONE":
@@ -305,7 +330,7 @@ for i, bar in enumerate(history[entry_timeframe]):
 reporting.generate_report(executor.trade_log, executor.equity_curve, output_dir)
 ```
 
-`slice_up_to_time(df, t)` returns all candles whose **close time** ≤ `t` (RULES.md §7 —
+`slice_up_to_time(df, t)` returns all candles whose **close time** ≤ `t` (RULES.md §8 —
 this is the look-ahead guard).
 
 ## 7. Live Engine (`live_engine.py`)
@@ -316,6 +341,9 @@ mt5_client.connect(cfg)
 last_processed_entry_candle_time = None
 
 while True:
+    if account_balance() <= 0 or account_equity() <= 0:
+        break
+
     candles = { tf: data_feed.get_latest(symbol, tf, n=warmup_bars + buffer) for tf in required_timeframes }
     latest_entry_candle = candles[entry_timeframe].iloc[-1]
 
@@ -348,6 +376,10 @@ loop without crashing the process.
   error code/description, and handled per-context (retry for connection/data, log +
   skip-this-cycle for a single failed order send — never crash the whole process on a
   single failed order).
+- Capital exhaustion stop guard:
+  - Backtest: if virtual `balance <= 0`, stop the run immediately.
+  - Live: if `balance <= 0` OR `equity <= 0`, stop the main loop immediately.
+  - Live: if an order is rejected due to insufficient funds / insufficient margin, stop the main loop immediately.
 - Strategy/indicator errors (e.g. malformed candle data) → treated as "no signal this
   cycle", logged as a warning, loop continues.
 

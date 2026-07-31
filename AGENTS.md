@@ -36,7 +36,7 @@ or live order placement.
   It must be fully testable with hand-built pandas DataFrames. Backtest and live must call
   the exact same `evaluate_signal()` function — never fork the logic.
 - **No look-ahead in backtests.** Any trend-timeframe candle used to evaluate a signal at
-  time T must have a `close_time <= T` on the entry timeframe. See RULES.md §7 and
+  time T must have a `close_time <= T` on the entry timeframe. See RULES.md §8 and
   DESIGN.md §6 (`slice_up_to_time`). This is the single most important correctness
   property of the backtest engine — double-check it whenever touching
   `backtest_engine.py`.

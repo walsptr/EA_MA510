@@ -11,6 +11,7 @@ from datetime import date
 
 from src.config import Config
 from src.backtest_engine import slice_up_to_time, run_backtest
+from src.order_executor import BacktestOrderExecutor
 
 
 def make_backtest_cfg() -> Config:
@@ -23,8 +24,13 @@ def make_backtest_cfg() -> Config:
         ma_low=5,
         ma_high=10,
         ma_type="EMA",
+        trend_ma_low_1=None,
+        trend_ma_high_1=None,
+        trend_ma_low_2=None,
+        trend_ma_high_2=None,
         backtest_start_date=date(2025, 1, 1),
         backtest_end_date=date(2025, 1, 3),
+        backtest_warmup_days=0,
         backtest_initial_balance=1000.0,
         backtest_spread_points=0,
         backtest_slippage_points=0,
@@ -52,6 +58,7 @@ def make_backtest_cfg() -> Config:
         trading_window_end=None,
         magic_number=12345,
         live_poll_interval_seconds=5,
+        live_warmup_days=0,
         mt5_login=None,
         mt5_password=None,
         mt5_server=None,
@@ -132,3 +139,26 @@ def test_backtest_deterministic_with_same_data():
     trade_log_2, equity_curve_2 = run_backtest(cfg, use_mt5=False)
     assert len(trade_log_1) == len(trade_log_2)
     assert len(equity_curve_1) == len(equity_curve_2)
+
+
+def test_run_backtest_does_not_open_new_trades_after_balance_non_tradable(monkeypatch):
+    opened = {"count": 0}
+
+    def _open_position_fail(*args, **kwargs):
+        opened["count"] += 1
+        pytest.fail("open_position should not be called when balance is non-tradable (<= 0)")
+
+    def _check_sl_tp_hits_force_balance_zero(self, bar):
+        self.balance = 0.0
+        self.equity = 0.0
+        return []
+
+    monkeypatch.setattr(BacktestOrderExecutor, "open_position", _open_position_fail)
+    monkeypatch.setattr(
+        BacktestOrderExecutor, "check_sl_tp_hits", _check_sl_tp_hits_force_balance_zero
+    )
+
+    cfg = make_backtest_cfg()
+    trade_log, equity_curve = run_backtest(cfg, use_mt5=False)
+    assert opened["count"] == 0
+    assert len(trade_log) == 0

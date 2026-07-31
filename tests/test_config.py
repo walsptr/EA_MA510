@@ -29,7 +29,8 @@ def _set_env(monkeypatch, env_dict):
     for k in list(os.environ.keys()):
         if k in ["MODE","SYMBOL","ENTRY_TIMEFRAME","TREND_TIMEFRAME_1","TREND_TIMEFRAME_2",
                  "MA_LOW","MA_HIGH","MA_TYPE","BACKTEST_START_DATE","BACKTEST_END_DATE",
-                 "BACKTEST_INITIAL_BALANCE","BACKTEST_SPREAD_POINTS","BACKTEST_SLIPPAGE_POINTS",
+                 "TREND_MA_LOW_1","TREND_MA_HIGH_1","TREND_MA_LOW_2","TREND_MA_HIGH_2",
+                 "BACKTEST_WARMUP_DAYS","BACKTEST_INITIAL_BALANCE","BACKTEST_SPREAD_POINTS","BACKTEST_SLIPPAGE_POINTS",
                  "SIZING_MODE","FIXED_LOT_SIZE","RISK_PERCENT_PER_TRADE",
                  "SL_MODE","SL_POINTS","SL_ATR_MULTIPLIER","SL_DOLLAR",
                  "TP_MODE","TP_POINTS","TP_ATR_MULTIPLIER","TP_DOLLAR",
@@ -37,6 +38,7 @@ def _set_env(monkeypatch, env_dict):
                  "TRAILING_STOP_ACTIVATION_POINTS","EXIT_ON_OPPOSITE_SIGNAL",
                  "MAX_CONCURRENT_POSITIONS","MAX_SPREAD_POINTS","MAX_DAILY_LOSS_PERCENT",
                  "MAGIC_NUMBER","LIVE_POLL_INTERVAL_SECONDS",
+                 "LIVE_WARMUP_DAYS",
                  "MT5_LOGIN","MT5_PASSWORD","MT5_SERVER","MT5_TERMINAL_PATH",
                  "LOG_LEVEL","LOG_DIR","REPORT_DIR","DISPLAY_TIMEZONE",
                  "TRADING_WINDOW_START","TRADING_WINDOW_END"]:
@@ -150,3 +152,94 @@ def test_config_trading_window_equal_start_end_invalid(monkeypatch):
     _set_env(monkeypatch, env)
     with pytest.raises(ConfigError):
         load_config(use_dotenv=False)
+
+
+def test_config_backtest_warmup_days_negative(monkeypatch):
+    env = _env_base()
+    env["BACKTEST_WARMUP_DAYS"] = "-1"
+    _set_env(monkeypatch, env)
+    with pytest.raises(ConfigError):
+        load_config(use_dotenv=False)
+
+
+def test_config_backtest_initial_balance_zero_invalid(monkeypatch):
+    env = _env_base()
+    env["BACKTEST_INITIAL_BALANCE"] = "0"
+    _set_env(monkeypatch, env)
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(use_dotenv=False)
+    assert "BACKTEST_INITIAL_BALANCE harus > 0" in str(excinfo.value)
+
+
+def test_config_backtest_initial_balance_negative_invalid(monkeypatch):
+    env = _env_base()
+    env["BACKTEST_INITIAL_BALANCE"] = "-100"
+    _set_env(monkeypatch, env)
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(use_dotenv=False)
+    assert "BACKTEST_INITIAL_BALANCE harus > 0" in str(excinfo.value)
+
+
+
+def test_config_live_warmup_days_negative(monkeypatch):
+    env = _env_base()
+    env["LIVE_WARMUP_DAYS"] = "-1"
+    _set_env(monkeypatch, env)
+    with pytest.raises(ConfigError):
+        load_config(use_dotenv=False)
+
+
+def test_config_trend_ma_partial_set_raises(monkeypatch):
+    env = _env_base()
+    env["TREND_MA_LOW_1"] = "5"
+    _set_env(monkeypatch, env)
+    with pytest.raises(ConfigError):
+        load_config(use_dotenv=False)
+
+
+def test_config_trend_ma_pair_1_only_valid(monkeypatch):
+    env = _env_base()
+    env["TREND_MA_LOW_1"] = "3"
+    env["TREND_MA_HIGH_1"] = "8"
+    _set_env(monkeypatch, env)
+    cfg = load_config(use_dotenv=False)
+    assert cfg.trend_ma_low_1 == 3
+    assert cfg.trend_ma_high_1 == 8
+    assert cfg.trend_ma_low_2 is None
+    assert cfg.trend_ma_high_2 is None
+
+
+def test_config_trend_ma_pair_2_only_valid(monkeypatch):
+    env = _env_base()
+    env["TREND_MA_LOW_2"] = "5"
+    env["TREND_MA_HIGH_2"] = "13"
+    _set_env(monkeypatch, env)
+    cfg = load_config(use_dotenv=False)
+    assert cfg.trend_ma_low_1 is None
+    assert cfg.trend_ma_high_1 is None
+    assert cfg.trend_ma_low_2 == 5
+    assert cfg.trend_ma_high_2 == 13
+
+
+
+def test_config_trend_ma_invalid_order_raises(monkeypatch):
+    env = _env_base()
+    env["TREND_MA_LOW_1"] = "10"
+    env["TREND_MA_HIGH_1"] = "10"
+    _set_env(monkeypatch, env)
+    with pytest.raises(ConfigError):
+        load_config(use_dotenv=False)
+
+
+def test_config_trend_ma_enabled_valid(monkeypatch):
+    env = _env_base()
+    env["TREND_MA_LOW_1"] = "3"
+    env["TREND_MA_HIGH_1"] = "8"
+    env["TREND_MA_LOW_2"] = "5"
+    env["TREND_MA_HIGH_2"] = "13"
+    _set_env(monkeypatch, env)
+    cfg = load_config(use_dotenv=False)
+    assert cfg.trend_ma_low_1 == 3
+    assert cfg.trend_ma_high_1 == 8
+    assert cfg.trend_ma_low_2 == 5
+    assert cfg.trend_ma_high_2 == 13

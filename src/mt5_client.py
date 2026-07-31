@@ -90,3 +90,20 @@ class MT5Client:
         except Exception as e:
             print(f"[WARNING] mt5.symbol_info({symbol!r}) error: {e}")
             return None
+
+    def account_info(self) -> Optional[dict]:
+        mt5 = self._import_mt5()
+        try:
+            info = mt5.account_info()
+            if info is None:
+                print(
+                    f"[WARNING] mt5.account_info() return None. Last error: {mt5.last_error()}"
+                )
+                return None
+            return {
+                "balance": float(getattr(info, "balance", 0.0)),
+                "equity": float(getattr(info, "equity", 0.0)),
+            }
+        except Exception as e:
+            print(f"[WARNING] mt5.account_info() error: {e}")
+            return None

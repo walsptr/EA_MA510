@@ -6,6 +6,35 @@ from src.risk_manager import TradePlan, SymbolInfo
 from src.config import Config
 
 
+class InsufficientFundsOrMarginError(RuntimeError):
+    def __init__(self, retcode: Optional[int], message: str):
+        super().__init__(message)
+        self.retcode = retcode
+
+
+def is_insufficient_funds_or_margin(retcode: Optional[int], message: Optional[str]) -> bool:
+    if retcode == 10019:
+        return True
+    msg = (message or "").strip().lower()
+    if not msg:
+        return False
+    if "no_money" in msg:
+        return True
+    if "no money" in msg:
+        return True
+    if "not enough money" in msg:
+        return True
+    if "insufficient funds" in msg:
+        return True
+    if "insufficient margin" in msg:
+        return True
+    if "not enough margin" in msg:
+        return True
+    if "margin" in msg and "not" in msg and "enough" in msg:
+        return True
+    return False
+
+
 @dataclass(frozen=True)
 class Position:
     ticket: int
@@ -319,3 +348,142 @@ class BacktestOrderExecutor:
             )
             results.append(res)
         return results
+
+
+class LiveOrderExecutor:
+    def __init__(self, cfg: Config, logger=None):
+        self._cfg = cfg
+        self._logger = logger
+
+    def _import_mt5(self):
+        try:
+            import MetaTrader5 as mt5
+            return mt5
+        except ImportError as e:
+            raise RuntimeError(
+                "MetaTrader5 package tidak tersedia. Install via pip install MetaTrader5."
+            ) from e
+
+    def _is_success_retcode(self, retcode: Optional[int]) -> bool:
+        return retcode in (0, 10008, 10009, 10010, 10025)
+
+    def get_open_positions(self, symbol: Optional[str] = None) -> List[Position]:
+        mt5 = self._import_mt5()
+        sym = symbol or self._cfg.symbol
+        positions = mt5.positions_get(symbol=sym)
+        if positions is None:
+            return []
+        result: List[Position] = []
+        for p in positions:
+            magic = getattr(p, "magic", None)
+            if magic is not None and int(magic) != int(self._cfg.magic_number):
+                continue
+            ptype = getattr(p, "type", None)
+            if ptype == getattr(mt5, "POSITION_TYPE_BUY", 0):
+                direction: Literal["BUY", "SELL"] = "BUY"
+            else:
+                direction = "SELL"
+            result.append(
+                Position(
+                    ticket=int(getattr(p, "ticket")),
+                    symbol=str(getattr(p, "symbol")),
+                    direction=direction,
+                    open_time=getattr(p, "time", None),
+                    open_price=float(getattr(p, "price_open", 0.0)),
+                    lot_size=float(getattr(p, "volume", 0.0)),
+                    sl_price=float(getattr(p, "sl", 0.0)),
+                    tp_price=float(getattr(p, "tp", 0.0)),
+                    magic_number=int(getattr(p, "magic", self._cfg.magic_number)),
+                    signal_reason="",
+                    equity_at_open=0.0,
+                )
+            )
+        return result
+
+    def can_open_new_position(self, direction: str, max_concurrent: int = 1, symbol: Optional[str] = None) -> bool:
+        positions = self.get_open_positions(symbol=symbol)
+        if len(positions) >= max_concurrent:
+            return False
+        for p in positions:
+            if p.direction == direction:
+                return False
+        return True
+
+    def open_position(
+        self,
+        plan: TradePlan,
+        at_time: Any,
+        signal_reason: str = "",
+        symbol: str = "",
+    ) -> TradeResult:
+        mt5 = self._import_mt5()
+        sym = symbol or self._cfg.symbol
+
+        tick = mt5.symbol_info_tick(sym)
+        if tick is None:
+            return TradeResult(
+                success=False,
+                position_id=None,
+                message=f"symbol_info_tick({sym!r}) returned None (last_error={mt5.last_error()})",
+            )
+
+        if plan.direction == "BUY":
+            order_type = mt5.ORDER_TYPE_BUY
+            price = getattr(tick, "ask", None)
+        else:
+            order_type = mt5.ORDER_TYPE_SELL
+            price = getattr(tick, "bid", None)
+
+        if price is None:
+            return TradeResult(
+                success=False,
+                position_id=None,
+                message=f"No tick price available for {sym!r} direction={plan.direction}",
+            )
+
+        comment = (signal_reason or "").strip()
+        if len(comment) > 31:
+            comment = comment[:31]
+
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": sym,
+            "volume": float(plan.lot_size),
+            "type": order_type,
+            "price": float(price),
+            "sl": float(plan.sl_price),
+            "tp": float(plan.tp_price),
+            "magic": int(self._cfg.magic_number),
+            "comment": comment,
+            "deviation": 0,
+        }
+
+        result = mt5.order_send(request)
+        if result is None:
+            return TradeResult(
+                success=False,
+                position_id=None,
+                message=f"order_send returned None (last_error={mt5.last_error()})",
+            )
+
+        retcode = getattr(result, "retcode", None)
+        res_comment = getattr(result, "comment", "") or ""
+        res_request_id = getattr(result, "request_id", None)
+        res_order = getattr(result, "order", None)
+        res_deal = getattr(result, "deal", None)
+        msg = f"retcode={retcode} comment={res_comment}"
+        if res_request_id is not None:
+            msg = f"{msg} request_id={res_request_id}"
+
+        if is_insufficient_funds_or_margin(retcode, msg):
+            raise InsufficientFundsOrMarginError(retcode, msg)
+
+        if self._is_success_retcode(retcode):
+            pos_id = None
+            if res_order:
+                pos_id = int(res_order)
+            elif res_deal:
+                pos_id = int(res_deal)
+            return TradeResult(success=True, position_id=pos_id, message=msg)
+
+        return TradeResult(success=False, position_id=None, message=msg)
