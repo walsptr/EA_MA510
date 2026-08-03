@@ -15,6 +15,7 @@ from src.order_executor import (
     EquityPoint,
     BacktestOrderExecutor,
     is_insufficient_funds_or_margin,
+    sanitize_mt5_comment,
 )
 
 
@@ -229,3 +230,16 @@ def test_is_insufficient_funds_or_margin_by_message():
     assert is_insufficient_funds_or_margin(None, "insufficient funds") is True
     assert is_insufficient_funds_or_margin(None, "not enough margin") is True
     assert is_insufficient_funds_or_margin(None, "some other error") is False
+
+
+def test_sanitize_mt5_comment_fallback_when_empty():
+    assert sanitize_mt5_comment("") == "EA_MA510"
+    assert sanitize_mt5_comment(None) == "EA_MA510"
+
+
+def test_sanitize_mt5_comment_ascii_and_max_len():
+    s = "cross_up + entry_trend_1=BULLISH + t1=BULLISH + t2=BULLISH ✓✓✓"
+    out = sanitize_mt5_comment(s, max_len=31)
+    assert isinstance(out, str)
+    assert 1 <= len(out) <= 31
+    out.encode("ascii")

@@ -35,6 +35,20 @@ def is_insufficient_funds_or_margin(retcode: Optional[int], message: Optional[st
     return False
 
 
+def sanitize_mt5_comment(value: Any, max_len: int = 31) -> str:
+    s = str(value or "").strip()
+    if not s:
+        return "EA_MA510"
+    s = s.encode("ascii", "ignore").decode("ascii")
+    s = "".join(ch for ch in s if 32 <= ord(ch) <= 126)
+    s = s.strip()
+    if not s:
+        return "EA_MA510"
+    if len(s) > max_len:
+        s = s[:max_len]
+    return s
+
+
 @dataclass(frozen=True)
 class Position:
     ticket: int
@@ -441,9 +455,7 @@ class LiveOrderExecutor:
                 message=f"No tick price available for {sym!r} direction={plan.direction}",
             )
 
-        comment = (signal_reason or "").strip()
-        if len(comment) > 31:
-            comment = comment[:31]
+        comment = sanitize_mt5_comment(plan.direction, max_len=31)
 
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
@@ -460,10 +472,21 @@ class LiveOrderExecutor:
 
         result = mt5.order_send(request)
         if result is None:
+            last_err = mt5.last_error()
+            if isinstance(last_err, tuple) and len(last_err) >= 2:
+                if "comment" in str(last_err[1]).lower():
+                    return TradeResult(
+                        success=False,
+                        position_id=None,
+                        message=(
+                            f"order_send returned None (last_error={last_err}) "
+                            f"(comment_used={comment!r})"
+                        ),
+                    )
             return TradeResult(
                 success=False,
                 position_id=None,
-                message=f"order_send returned None (last_error={mt5.last_error()})",
+                message=f"order_send returned None (last_error={last_err})",
             )
 
         retcode = getattr(result, "retcode", None)
